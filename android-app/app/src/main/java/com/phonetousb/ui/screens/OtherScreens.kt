@@ -323,13 +323,27 @@ fun PairingScreen(
     var friendlyNameInput by remember { mutableStateOf("My Android Phone") }
     var isPairing by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
+    var lastScannedData by remember { mutableStateOf<String?>(null) }
 
-    fun submitPairing(rid: String, tok: String) {
+    fun submitPairing(rid: String, tok: String, customBackend: String? = null) {
         if (rid.isBlank() || tok.isBlank() || isPairing) return
         isPairing = true
-        statusText = "Sending pairing request... Please click 'Approve' on your laptop."
+        statusText = "Connecting to coordination server..."
 
         scope.launch {
+            if (!customBackend.isNullOrBlank() && customBackend != client.backendUrl) {
+                client.backendUrl = customBackend
+                client.disconnect()
+            }
+
+            val isConnected = client.ensureConnected(7000)
+            if (!isConnected) {
+                statusText = "Cannot reach server at ${client.backendUrl}. Check Wi-Fi/Internet connection."
+                isPairing = false
+                return@launch
+            }
+
+            statusText = "Sending pairing request... Please click 'Approve' on your laptop."
             val (success, resultMsg) = client.sendPairingRequest(rid.trim(), tok.trim(), friendlyNameInput)
             isPairing = false
             if (success) {
@@ -341,6 +355,7 @@ fun PairingScreen(
                         isOnline = true
                     )
                 )
+                statusText = "Approved! Connecting to USB storage..."
                 onPairingSuccess()
             } else {
                 statusText = "Pairing failed: $resultMsg"
@@ -350,20 +365,17 @@ fun PairingScreen(
 
     // Auto-parse scanned QR code JSON
     fun handleScannedQrCode(qrData: String) {
+        if (isPairing || qrData == lastScannedData) return
+        lastScannedData = qrData
+
         try {
             val json = Gson().fromJson(qrData, JsonObject::class.java)
             val rid = json.get("rid")?.asString
             val tok = json.get("token")?.asString
             val backend = json.get("backend")?.asString
 
-            if (!backend.isNullOrBlank()) {
-                client.backendUrl = backend
-                client.disconnect()
-                client.connect()
-            }
-
             if (!rid.isNullOrBlank() && !tok.isNullOrBlank()) {
-                submitPairing(rid, tok)
+                submitPairing(rid, tok, backend)
             }
         } catch (_: Exception) {
             // If QR is raw token or plain text
@@ -414,7 +426,7 @@ fun PairingScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(24.dp)
-                        .background(Color(0xCC0F172A), RoundedCornerShape(16.dp))
+                        .background(Color(0xEE0F172A), RoundedCornerShape(16.dp))
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -431,13 +443,47 @@ fun PairingScreen(
                         color = TextMuted
                     )
 
+                    if (isPairing) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = SkyLight,
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.5.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Waiting for laptop approval...",
+                                color = SkyLight,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
                     statusText?.let {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = it,
-                            color = if (it.startsWith("Pairing failed")) RedDanger else SkyLight,
+                            color = if (it.startsWith("Pairing failed") || it.startsWith("Cannot reach")) RedDanger else SkyLight,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    if (!isPairing && statusText != null && (statusText!!.startsWith("Pairing failed") || statusText!!.startsWith("Cannot reach"))) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                lastScannedData = null
+                                statusText = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = SkyPrimary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Scan Again", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             } else {

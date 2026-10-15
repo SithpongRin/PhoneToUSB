@@ -16,12 +16,17 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class SignalingClient(private val context: Context, var backendUrl: String = "ws://10.0.2.2:8000/ws/client") {
+class SignalingClient(private val context: Context, initialBackendUrl: String = "ws://10.0.2.2:8000/ws/client") {
     private val client = OkHttpClient.Builder()
-        .pingInterval(20, TimeUnit.SECONDS)
-        .connectTimeout(10, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+
+    var backendUrl: String = normalizeClientUrl(initialBackendUrl)
+        set(value) {
+            field = normalizeClientUrl(value)
+        }
 
     private var webSocket: WebSocket? = null
     private val gson = Gson()
@@ -35,39 +40,81 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
 
     val clientId: String by lazy { KeyStoreManager.getOrCreateClientId(context) }
 
+    fun normalizeClientUrl(url: String): String {
+        var clean = url.trim()
+        if (!clean.startsWith("ws://") && !clean.startsWith("wss://")) {
+            clean = if (clean.startsWith("https://")) {
+                clean.replaceFirst("https://", "wss://")
+            } else if (clean.startsWith("http://")) {
+                clean.replaceFirst("http://", "ws://")
+            } else {
+                "ws://$clean"
+            }
+        }
+        // Ensure path points to /ws/client
+        if (clean.endsWith("/ws/receiver")) {
+            clean = clean.replace("/ws/receiver", "/ws/client")
+        } else if (!clean.endsWith("/ws/client")) {
+            clean = clean.trimEnd('/') + "/ws/client"
+        }
+        return clean
+    }
+
     fun connect() {
         if (_connectionState.value == "CONNECTED" || _connectionState.value == "CONNECTING") return
 
         _connectionState.value = "CONNECTING"
-        val request = Request.Builder().url(backendUrl).build()
-
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(ws: WebSocket, response: Response) {
-                _connectionState.value = "CONNECTED"
-                val hello = JsonObject().apply {
-                    addProperty("client_id", clientId)
+        try {
+            val request = Request.Builder().url(backendUrl).build()
+            webSocket = client.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(ws: WebSocket, response: Response) {
+                    _connectionState.value = "CONNECTED"
+                    val hello = JsonObject().apply {
+                        addProperty("client_id", clientId)
+                    }
+                    ws.send(hello.toString())
                 }
-                ws.send(hello.toString())
-            }
 
-            override fun onMessage(ws: WebSocket, text: String) {
-                handleIncomingMessage(text)
-            }
+                override fun onMessage(ws: WebSocket, text: String) {
+                    handleIncomingMessage(text)
+                }
 
-            override fun onClosing(ws: WebSocket, code: Int, reason: String) {
-                _connectionState.value = "DISCONNECTED"
-            }
+                override fun onClosing(ws: WebSocket, code: Int, reason: String) {
+                    _connectionState.value = "DISCONNECTED"
+                }
 
-            override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-                _connectionState.value = "ERROR"
-            }
-        })
+                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                    _connectionState.value = "ERROR"
+                }
+            })
+        } catch (_: Exception) {
+            _connectionState.value = "ERROR"
+        }
     }
 
     fun disconnect() {
-        webSocket?.close(1000, "User logout")
+        try {
+            webSocket?.close(1000, "User disconnect")
+        } catch (_: Exception) {}
         webSocket = null
         _connectionState.value = "DISCONNECTED"
+    }
+
+    suspend fun ensureConnected(timeoutMs: Long = 6000): Boolean {
+        if (_connectionState.value == "CONNECTED") return true
+
+        disconnect()
+        connect()
+
+        return withTimeoutOrNull(timeoutMs) {
+            while (_connectionState.value != "CONNECTED") {
+                if (_connectionState.value == "ERROR") {
+                    return@withTimeoutOrNull false
+                }
+                delay(150)
+            }
+            true
+        } ?: false
     }
 
     private fun handleIncomingMessage(text: String) {
@@ -78,8 +125,8 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
             if (action == "PRESENCE_RESPONSE") {
                 val presenceObj = json.getAsJsonObject("presence")
                 val map = mutableMapOf<String, Boolean>()
-                presenceObj.keySet().forEach { rid ->
-                    map[rid] = presenceObj.get(rid).asBoolean
+                presenceObj?.keySet()?.forEach { rid ->
+                    map[rid] = presenceObj.get(rid)?.asBoolean ?: false
                 }
                 _receiverPresence.value = map
             } else if (json.has("request_id")) {
@@ -90,6 +137,7 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
     }
 
     suspend fun queryPresence(receiverIds: List<String>) {
+        if (!ensureConnected(2000)) return
         val msg = JsonObject().apply {
             addProperty("action", "QUERY_PRESENCE")
             add("receiver_ids", gson.toJsonTree(receiverIds))
@@ -98,6 +146,12 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
     }
 
     suspend fun sendPairingRequest(receiverId: String, token: String, clientName: String): Pair<Boolean, String> {
+        // Ensure WebSocket is alive and ready
+        val isReady = ensureConnected(7000)
+        if (!isReady) {
+            return Pair(false, "Cannot connect to server ($backendUrl). Ensure laptop and phone are on the same Wi-Fi/Internet.")
+        }
+
         val reqId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<JsonObject>()
         pendingRequests[reqId] = deferred
@@ -112,17 +166,23 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
             addProperty("client_pubkey", KeyStoreManager.getPublicKeyBase64(context))
         }
 
-        webSocket?.send(msg.toString())
+        val sent = webSocket?.send(msg.toString()) ?: false
+        if (!sent) {
+            pendingRequests.remove(reqId)
+            return Pair(false, "Failed to send packet over network")
+        }
+
         return try {
             val res = withTimeout(60000) { deferred.await() }
             val status = res.get("status")?.asString
             if (status == "APPROVED") {
                 Pair(true, res.get("receiver_friendly_name")?.asString ?: "PhoneToUSB Drive")
             } else {
-                Pair(false, res.get("reason")?.asString ?: "Pairing rejected")
+                Pair(false, res.get("reason")?.asString ?: "Pairing was rejected or timed out")
             }
         } catch (e: Exception) {
-            Pair(false, "Timeout or network error: ${e.message}")
+            pendingRequests.remove(reqId)
+            Pair(false, "Waiting timed out. Please click 'Approve' promptly on your laptop.")
         }
     }
 
@@ -133,6 +193,8 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
         sortAsc: Boolean = true,
         search: String = ""
     ): UsbDirectoryResponse? {
+        if (!ensureConnected(3000)) return null
+
         val reqId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<JsonObject>()
         pendingRequests[reqId] = deferred
@@ -164,6 +226,7 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
     }
 
     suspend fun createDirectory(receiverId: String, path: String): Boolean {
+        if (!ensureConnected(3000)) return false
         val reqId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<JsonObject>()
         pendingRequests[reqId] = deferred
@@ -183,6 +246,7 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
     }
 
     suspend fun renameItem(receiverId: String, oldPath: String, newName: String): Boolean {
+        if (!ensureConnected(3000)) return false
         val reqId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<JsonObject>()
         pendingRequests[reqId] = deferred
@@ -205,6 +269,7 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
     }
 
     suspend fun deleteItem(receiverId: String, path: String, recursive: Boolean = false): Boolean {
+        if (!ensureConnected(3000)) return false
         val reqId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<JsonObject>()
         pendingRequests[reqId] = deferred
@@ -232,6 +297,8 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
         targetRelativePath: String,
         onProgress: (bytesSent: Long, total: Long) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureConnected(5000)) return@withContext false
+
         val transferId = UUID.randomUUID().toString()
         val totalBytes = file.length()
         val sha256 = CryptoUtils.calculateFileSha256(file)
@@ -256,8 +323,8 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
         }
         webSocket?.send(startMsg.toString())
         val startRes = try {
-            withTimeout(10000) { startDeferred.await() }
-        } catch (e: Exception) { return@withContext false }
+            withTimeout(12000) { startDeferred.await() }
+        } catch (_: Exception) { return@withContext false }
 
         if (startRes.get("success")?.asBoolean != true) return@withContext false
 
@@ -287,7 +354,7 @@ class SignalingClient(private val context: Context, var backendUrl: String = "ws
                 sentBytes += bytesRead
                 chunkIndex++
                 onProgress(sentBytes, totalBytes)
-                delay(5) // Light backpressure to avoid overwhelming socket buffer
+                delay(5)
             }
         }
 

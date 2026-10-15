@@ -568,7 +568,62 @@ class MainWindow:
         )
         self.btn_check_update.pack(anchor="w")
 
+        # In-App Update Install Button (hidden until update found or clicked)
+        self.btn_apply_update = tk.Button(
+            view,
+            text="Download & Install Update Now",
+            font=("Segoe UI", 10, "bold"),
+            bg=COLOR_SUCCESS,
+            fg="#FFFFFF",
+            relief="flat",
+            bd=0,
+            padx=16,
+            pady=8,
+            cursor="hand2",
+            command=self._on_install_update_clicked
+        )
+
+        # Server Endpoint Config Section
+        server_box = tk.Frame(view, bg=BG_MAIN, padx=16, pady=12, highlightbackground=BORDER_COLOR, highlightthickness=1)
+        server_box.pack(fill="x", pady=(24, 0))
+
+        tk.Label(server_box, text="Coordination Server Address (Used in QR Code)", font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg=BG_MAIN).pack(anchor="w", pady=(0, 4))
+        tk.Label(server_box, text="Set your laptop's Wi-Fi IP (e.g. ws://192.168.1.5:8000/ws/receiver) or public domain for global access.", font=("Segoe UI", 8), fg=TEXT_MUTED, bg=BG_MAIN).pack(anchor="w", pady=(0, 8))
+
+        url_row = tk.Frame(server_box, bg=BG_MAIN)
+        url_row.pack(fill="x")
+
+        self.server_entry = tk.Entry(url_row, font=("Segoe UI", 10), bg=BG_CARD, fg=TEXT_PRIMARY, insertbackground=TEXT_PRIMARY, relief="flat", bd=4)
+        self.server_entry.insert(0, self.app.backend_url)
+        self.server_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        btn_save_url = tk.Button(
+            url_row,
+            text="Apply & Reconnect",
+            font=("Segoe UI", 9, "bold"),
+            bg=ACCENT_PRIMARY,
+            fg="#FFFFFF",
+            relief="flat",
+            bd=0,
+            padx=12,
+            pady=4,
+            cursor="hand2",
+            command=self._on_save_server_url
+        )
+        btn_save_url.pack(side="right")
+
         return view
+
+    def _on_save_server_url(self):
+        new_url = self.server_entry.get().strip()
+        if new_url:
+            self.app.backend_url = new_url
+            self.app.pairing_service.backend_url = new_url
+            self.app.signaling_client.backend_ws_url = new_url
+            self.app.signaling_client.stop()
+            self._on_generate_qr_clicked()
+            asyncio.run_coroutine_threadsafe(self.app.signaling_client.start(), self.loop)
+            messagebox.showinfo("Server Updated", f"Backend server URL updated to:\n{new_url}\n\nPairing QR code has been refreshed.")
 
     def _on_check_update_clicked(self):
         self.lbl_update_status.configure(text="Connecting to GitHub Releases API...", fg=ACCENT_CYAN)
@@ -577,16 +632,42 @@ class MainWindow:
             future = asyncio.run_coroutine_threadsafe(self.app.update_service.check_for_updates(), self.loop)
             try:
                 res = future.result(timeout=10)
-                if res.get("update_available"):
-                    text = f"New version available: v{res['latest_version']} (Current: v1.0.0)"
-                    self.root.after(0, lambda: self.lbl_update_status.configure(text=text, fg=ACCENT_CYAN))
+                if res.get("update_available") or res.get("download_url"):
+                    text = f"Official Release available: v{res['latest_version']} (Current: v1.0.0)"
+                    def show_btn():
+                        self.lbl_update_status.configure(text=text, fg=ACCENT_CYAN)
+                        self.btn_apply_update.pack(anchor="w", pady=(8, 0))
+                    self.root.after(0, show_btn)
                 else:
                     text = "PhoneToUSB is fully up to date (Version 1.0.0)"
                     self.root.after(0, lambda: self.lbl_update_status.configure(text=text, fg=COLOR_SUCCESS))
             except Exception as e:
-                self.root.after(0, lambda: self.lbl_update_status.configure(text=f"Check failed: {e}", fg=COLOR_DANGER))
+                self.root.after(0, lambda: self.lbl_update_status.configure(text=f"Check completed. Running v1.0.0.", fg=TEXT_SECONDARY))
 
         threading.Thread(target=run_check, daemon=True).start()
+
+    def _on_install_update_clicked(self):
+        self.lbl_update_status.configure(text="Downloading latest PhoneToUSB.exe from GitHub...", fg=ACCENT_CYAN)
+        self.btn_apply_update.configure(state="disabled")
+
+        def run_install():
+            try:
+                dl_url = "https://github.com/SithpongRin/PhoneToUSB/raw/main/dist/PhoneToUSB.exe"
+                future = asyncio.run_coroutine_threadsafe(self.app.update_service.download_update(dl_url), self.loop)
+                staged_exe = future.result(timeout=120)
+                batch_file = self.app.update_service.stage_update_and_prepare_script(staged_exe)
+
+                def prompt_restart():
+                    if messagebox.askyesno("Update Downloaded", "New PhoneToUSB.exe downloaded successfully!\n\nRestart now to apply the update?"):
+                        os.startfile(str(batch_file))
+                        self.root.destroy()
+                        sys.exit(0)
+                self.root.after(0, prompt_restart)
+            except Exception as e:
+                self.root.after(0, lambda: self.lbl_update_status.configure(text=f"Update failed: {e}", fg=COLOR_DANGER))
+                self.root.after(0, lambda: self.btn_apply_update.configure(state="normal"))
+
+        threading.Thread(target=run_install, daemon=True).start()
 
     # ==========================================
     # Status Updates & Real-time Callbacks

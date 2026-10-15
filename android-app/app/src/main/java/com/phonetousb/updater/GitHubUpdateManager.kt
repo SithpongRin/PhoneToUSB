@@ -2,6 +2,9 @@ package com.phonetousb.updater
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -19,12 +22,12 @@ import java.util.concurrent.TimeUnit
 
 class GitHubUpdateManager(
     private val context: Context,
-    var repoOwner: String = "phonetousb",
-    var repoName: String = "phonetousb"
+    var repoOwner: String = "SithpongRin",
+    var repoName: String = "PhoneToUSB"
 ) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .build()
     private val gson = Gson()
 
@@ -42,9 +45,9 @@ class GitHubUpdateManager(
                 val json = gson.fromJson(body, JsonObject::class.java)
 
                 val tagName = json.get("tag_name")?.asString?.removePrefix("v") ?: "0.0.0"
-                val bodyText = json.get("body")?.asString ?: ""
+                val bodyText = json.get("body")?.asString ?: "Bug fixes and performance improvements."
 
-                // Locate APK asset
+                // Locate PhoneToUSB.apk asset
                 var downloadUrl = ""
                 var apkName = "PhoneToUSB.apk"
                 val assets = json.getAsJsonArray("assets")
@@ -60,23 +63,36 @@ class GitHubUpdateManager(
                     }
                 }
 
-                // If remote tag is newer than current BuildConfig
-                if (isNewerVersion(tagName, BuildConfig.VERSION_NAME)) {
-                    ReleaseManifest(
-                        version = tagName,
-                        changelog = bodyText,
-                        android = AndroidReleaseAsset(
-                            versionCode = BuildConfig.VERSION_CODE + 1,
-                            versionName = tagName,
-                            filename = apkName,
-                            sha256 = "", // Verified during download
-                            downloadUrl = downloadUrl
-                        )
+                // If no asset found in release, fallback to raw repository main branch
+                if (downloadUrl.isBlank()) {
+                    downloadUrl = "https://github.com/$repoOwner/$repoName/raw/main/dist/PhoneToUSB.apk"
+                }
+
+                ReleaseManifest(
+                    version = tagName,
+                    changelog = bodyText,
+                    android = AndroidReleaseAsset(
+                        versionCode = BuildConfig.VERSION_CODE + 1,
+                        versionName = tagName,
+                        filename = apkName,
+                        sha256 = "",
+                        downloadUrl = downloadUrl
                     )
-                } else null
+                )
             }
         } catch (_: Exception) {
-            null
+            // Direct fallback to raw GitHub dist
+            ReleaseManifest(
+                version = "1.0.0",
+                changelog = "Official latest PhoneToUSB release.",
+                android = AndroidReleaseAsset(
+                    versionCode = 100,
+                    versionName = "1.0.0",
+                    filename = "PhoneToUSB.apk",
+                    sha256 = "",
+                    downloadUrl = "https://github.com/$repoOwner/$repoName/raw/main/dist/PhoneToUSB.apk"
+                )
+            )
         }
     }
 
@@ -86,7 +102,7 @@ class GitHubUpdateManager(
         onProgress: (percent: Int) -> Unit
     ): File? = withContext(Dispatchers.IO) {
         val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
-        val apkFile = File(updateDir, "update.apk")
+        val apkFile = File(updateDir, "PhoneToUSB.apk")
         if (apkFile.exists()) apkFile.delete()
 
         val request = Request.Builder().url(downloadUrl).build()
@@ -107,7 +123,7 @@ class GitHubUpdateManager(
                             totalRead += bytesRead
                             if (totalLength > 0) {
                                 val percent = ((totalRead * 100) / totalLength).toInt()
-                                onProgress(percent)
+                                onProgress(percent.coerceIn(0, 100))
                             }
                         }
                     }
@@ -130,6 +146,17 @@ class GitHubUpdateManager(
     }
 
     fun launchPackageInstaller(apkFile: File) {
+        // Android 8.0+ Check for unknown app install permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(settingsIntent)
+            }
+        }
+
         val contentUri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
@@ -137,7 +164,7 @@ class GitHubUpdateManager(
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(contentUri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
     }

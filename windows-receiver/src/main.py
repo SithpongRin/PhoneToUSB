@@ -1,16 +1,17 @@
 """
 Main entry point for PhoneToUSB Windows Receiver.
-Runs the Tkinter GUI on the main thread and the asyncio networking loop in a background worker thread.
+Resolves dynamic LAN IP for QR pairing and starts the desktop GUI.
 """
 
 import sys
 import os
+import socket
 import asyncio
 import threading
 from pathlib import Path
 import tkinter as tk
 
-# Add src to sys.path if running as script
+# Add src to sys.path
 current_dir = Path(__file__).resolve().parent
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
@@ -18,15 +19,24 @@ if str(current_dir) not in sys.path:
 from application import PhoneToUSBApp
 from ui.main_window import MainWindow
 
-def run_app():
-    # Setup Tkinter root
-    root = tk.Tk()
+def resolve_lan_ip() -> str:
+    """Detects the laptop's local network IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
 
-    # Create dedicated background event loop for networking
+def run_app():
+    root = tk.Tk()
     async_loop = asyncio.new_event_loop()
 
-    # Determine backend URL from environment or fallback default
-    backend_url = os.environ.get("PHONETOUSB_BACKEND_URL", "ws://127.0.0.1:8000/ws/receiver")
+    lan_ip = resolve_lan_ip()
+    default_url = f"ws://{lan_ip}:8000/ws/receiver"
+    backend_url = os.environ.get("PHONETOUSB_BACKEND_URL", default_url)
 
     app_coordinator = PhoneToUSBApp(backend_url=backend_url)
     window = MainWindow(root, app_coordinator, async_loop)
@@ -40,7 +50,6 @@ def run_app():
     network_thread.start()
 
     def on_close():
-        # Cleanly stop network loop
         future = asyncio.run_coroutine_threadsafe(app_coordinator.stop(), async_loop)
         try:
             future.result(timeout=2)
