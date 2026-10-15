@@ -86,13 +86,6 @@ class UpdateService:
             "changelog": "PhoneToUSB is running the latest official build."
         }
 
-        except Exception as e:
-            return {
-                "update_available": False,
-                "error": f"Failed to check updates: {str(e)}",
-                "current_version": self.current_version
-            }
-
     def _compare_versions(self, v1: str, v2: str) -> int:
         try:
             p1 = [int(x) for x in v1.split(".")]
