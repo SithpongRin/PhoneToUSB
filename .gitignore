@@ -12,7 +12,11 @@ venv/
 ENV/
 build/
 develop-eggs/
-dist/
+dist/*
+!dist/PhoneToUSB.apk
+!dist/PhoneToUSB.apk.sha256
+!dist/PhoneToUSB-Windows.zip
+!dist/PhoneToUSB-Windows.zip.sha256
 downloads/
 eggs/
 .eggs/
