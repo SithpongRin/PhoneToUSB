@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  coturn:
+    image: coturn/coturn:latest
+    container_name: phonetousb-turn
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./coturn.conf:/etc/coturn/turnserver.conf:ro
+    environment:
+      - DETECT_EXTERNAL_IP=yes
