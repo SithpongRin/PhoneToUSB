@@ -98,6 +98,6 @@ PhoneToUSB/
 4. **Android Unit Tests**:
    - `./gradlew test`
    - **PASSED** (all tasks executed successfully)
-5. **Portable Executable Build**:
-   - `PhoneToUSB.exe` (26.09 MB) generated with PyInstaller
-   - `PhoneToUSB-Windows.zip` generated with SHA-256 checksum
+5. **Standalone Executable Binaries in `dist/`**:
+   - `dist/PhoneToUSB.apk` (Android app APK)
+   - `dist/PhoneToUSB.exe` (Windows receiver portable executable)
