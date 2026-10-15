@@ -550,7 +550,7 @@ class MainWindow:
             bg=BG_CARD
         ).pack(anchor="w", pady=(0, 16))
 
-        self.lbl_update_status = tk.Label(view, text="Installed Version: v1.0.0 (Official)", font=("Segoe UI", 10), fg=TEXT_SECONDARY, bg=BG_CARD)
+        self.lbl_update_status = tk.Label(view, text="Installed Version: v1.0.1 (Official)", font=("Segoe UI", 10), fg=TEXT_SECONDARY, bg=BG_CARD)
         self.lbl_update_status.pack(anchor="w", pady=(0, 16))
 
         self.btn_check_update = tk.Button(
@@ -571,7 +571,7 @@ class MainWindow:
         # In-App Update Install Button (hidden until update found or clicked)
         self.btn_apply_update = tk.Button(
             view,
-            text="Download & Install Update Now",
+            text="Download & Install Update Now (In-App)",
             font=("Segoe UI", 10, "bold"),
             bg=COLOR_SUCCESS,
             fg="#FFFFFF",
@@ -626,23 +626,23 @@ class MainWindow:
             messagebox.showinfo("Server Updated", f"Backend server URL updated to:\n{new_url}\n\nPairing QR code has been refreshed.")
 
     def _on_check_update_clicked(self):
-        self.lbl_update_status.configure(text="Connecting to GitHub Releases API...", fg=ACCENT_CYAN)
+        self.lbl_update_status.configure(text="Checking for official updates...", fg=ACCENT_CYAN)
 
         def run_check():
             future = asyncio.run_coroutine_threadsafe(self.app.update_service.check_for_updates(), self.loop)
             try:
                 res = future.result(timeout=10)
                 if res.get("update_available") or res.get("download_url"):
-                    text = f"Official Release available: v{res['latest_version']} (Current: v1.0.0)"
+                    text = f"Official Release available: v{res['latest_version']} (Current: v1.0.1)"
                     def show_btn():
                         self.lbl_update_status.configure(text=text, fg=ACCENT_CYAN)
                         self.btn_apply_update.pack(anchor="w", pady=(8, 0))
                     self.root.after(0, show_btn)
                 else:
-                    text = "PhoneToUSB is fully up to date (Version 1.0.0)"
+                    text = "PhoneToUSB is fully up to date (Version 1.0.1)"
                     self.root.after(0, lambda: self.lbl_update_status.configure(text=text, fg=COLOR_SUCCESS))
             except Exception as e:
-                self.root.after(0, lambda: self.lbl_update_status.configure(text=f"Check completed. Running v1.0.0.", fg=TEXT_SECONDARY))
+                self.root.after(0, lambda: self.lbl_update_status.configure(text=f"Running version v1.0.1.", fg=TEXT_SECONDARY))
 
         threading.Thread(target=run_check, daemon=True).start()
 

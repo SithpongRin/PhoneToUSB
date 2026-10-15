@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import httpx
 
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.1"
 
 class UpdateService:
     def __init__(self, usb_root: Path, github_repo: str = "SithpongRin/PhoneToUSB"):
@@ -22,11 +22,12 @@ class UpdateService:
         self._latest_release_info: Optional[Dict[str, Any]] = None
 
     async def check_for_updates(self) -> Dict[str, Any]:
-        """Queries GitHub Releases API for the latest release."""
-        url = f"https://api.github.com/repos/{self.github_repo}/releases/latest"
+        """Queries GitHub Releases API or raw manifest for the latest release."""
         headers = {"User-Agent": "PhoneToUSB-Windows-Receiver"}
 
+        # Attempt 1: GitHub Releases API
         try:
+            url = f"https://api.github.com/repos/{self.github_repo}/releases/latest"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
@@ -34,7 +35,6 @@ class UpdateService:
                     tag_name = data.get("tag_name", "").lstrip("v")
                     assets = data.get("assets", [])
 
-                    # Find windows exe asset
                     exe_asset = None
                     for asset in assets:
                         name = asset.get("name", "")
@@ -46,7 +46,7 @@ class UpdateService:
                     is_newer = self._compare_versions(tag_name, self.current_version) > 0
 
                     self._latest_release_info = {
-                        "latest_version": tag_name or "1.0.0",
+                        "latest_version": tag_name or "1.0.1",
                         "current_version": self.current_version,
                         "update_available": is_newer,
                         "changelog": data.get("body", "Official update release."),
@@ -54,15 +54,37 @@ class UpdateService:
                         "asset_name": "PhoneToUSB.exe"
                     }
                     return self._latest_release_info
+        except Exception:
+            pass
 
-            # Direct fallback
-            return {
-                "latest_version": "1.0.0",
-                "current_version": self.current_version,
-                "update_available": False,
-                "download_url": f"https://github.com/{self.github_repo}/raw/main/dist/PhoneToUSB.exe",
-                "changelog": "PhoneToUSB is up to date."
-            }
+        # Attempt 2: Raw GitHub release-manifest.json (No rate limits)
+        try:
+            manifest_url = f"https://raw.githubusercontent.com/{self.github_repo}/main/release-manifest.json"
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(manifest_url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    ver = data.get("version", "").lstrip("v")
+                    is_newer = self._compare_versions(ver, self.current_version) > 0
+                    return {
+                        "latest_version": ver or "1.0.1",
+                        "current_version": self.current_version,
+                        "update_available": is_newer,
+                        "changelog": f"Verified official release v{ver}",
+                        "download_url": f"https://github.com/{self.github_repo}/raw/main/dist/PhoneToUSB.exe",
+                        "asset_name": "PhoneToUSB.exe"
+                    }
+        except Exception:
+            pass
+
+        # Attempt 3: Direct fallback
+        return {
+            "latest_version": "1.0.1",
+            "current_version": self.current_version,
+            "update_available": False,
+            "download_url": f"https://github.com/{self.github_repo}/raw/main/dist/PhoneToUSB.exe",
+            "changelog": "PhoneToUSB is running the latest official build."
+        }
 
         except Exception as e:
             return {

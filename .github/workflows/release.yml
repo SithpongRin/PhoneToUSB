@@ -23,8 +23,10 @@ jobs:
 
       - name: Generate Release Manifest
         run: |
-          APK_HASH=$(cat dist/PhoneToUSB.apk.sha256 | tr -d '\r\n')
-          EXE_HASH=$(cat dist/PhoneToUSB.exe.sha256 | tr -d '\r\n')
+          APK_HASH=$(awk '{print $1}' dist/PhoneToUSB.apk.sha256)
+          EXE_HASH=$(awk '{print $1}' dist/PhoneToUSB.exe.sha256)
+          echo "APK_HASH=$APK_HASH" >> $GITHUB_ENV
+          echo "EXE_HASH=$EXE_HASH" >> $GITHUB_ENV
           cat <<EOF > release-manifest.json
           {
             "version": "${{ github.ref_name }}",

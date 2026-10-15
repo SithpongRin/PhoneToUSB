@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 receiverRepo = app.receiverRepository,
                                 client = app.signalingClient,
+                                updateManager = app.updateManager,
                                 onNavigateToBrowser = { navController.navigate("browser") },
                                 onNavigateToPairing = { navController.navigate("pairing") },
                                 onNavigateToDevices = { navController.navigate("devices") },
