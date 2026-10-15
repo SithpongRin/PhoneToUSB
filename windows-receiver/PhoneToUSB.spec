@@ -4,6 +4,18 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 block_cipher = None
 
 hidden_imports = [
+    'application',
+    'update_service',
+    'usb_manager',
+    'receiver_identity',
+    'filesystem_service',
+    'authorization_service',
+    'pairing_service',
+    'transfer_service',
+    'signaling_client',
+    'logging_service',
+    'ui',
+    'ui.main_window',
     'websockets',
     'cryptography',
     'PIL',

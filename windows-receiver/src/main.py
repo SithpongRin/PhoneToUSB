@@ -16,6 +16,17 @@ current_dir = Path(__file__).resolve().parent
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
+import logging_service
+import usb_manager
+import receiver_identity
+import filesystem_service
+import authorization_service
+import pairing_service
+import transfer_service
+import signaling_client
+import update_service
+import ui.main_window
+
 from application import PhoneToUSBApp
 from ui.main_window import MainWindow
 

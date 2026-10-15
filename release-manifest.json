@@ -1,6 +1,6 @@
 {
   "version": "1.0.1",
-  "release_date": "2026-10-16T00:07:51Z",
+  "release_date": "2026-10-16T00:25:34Z",
   "android": {
     "versionCode": 101,
     "versionName": "1.0.1",
@@ -11,7 +11,7 @@
   "windows": {
     "version": "1.0.1",
     "filename": "PhoneToUSB.exe",
-    "sha256": "27dc0e85bd51ed91c536a524843efe9fcf10cb4266c0ee7ad1ccdaa5f28f3e27",
+    "sha256": "50ba4a28cf87b8668d2c7ad05dffe2e95ce631a1b199a8cf0b3cd6c51dbc395a",
     "downloadUrl": "https://github.com/SithpongRin/PhoneToUSB/raw/main/dist/PhoneToUSB.exe"
   }
 }
