@@ -623,6 +623,12 @@ def scan_uploaded_files(folder):
             if entry.is_file() and not entry.name.endswith(".part"):
                 try:
                     st = entry.stat()
+                    ext = os.path.splitext(entry.name)[1].lower()
+                    is_img = ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico")
+                    is_vid = ext in (".mp4", ".webm", ".mov", ".mkv")
+                    is_aud = ext in (".mp3", ".wav", ".m4a", ".ogg", ".aac")
+                    is_pdf = ext == ".pdf"
+                    is_txt = ext in (".txt", ".log", ".json", ".csv", ".py", ".md", ".html", ".css", ".js", ".xml", ".yaml", ".yml")
                     items.append({
                         "name": entry.name,
                         "encoded": quote(entry.name),
@@ -630,6 +636,12 @@ def scan_uploaded_files(folder):
                         "mtime": st.st_mtime,
                         "time_str": datetime.fromtimestamp(st.st_mtime).strftime("%b %d, %Y %H:%M"),
                         "badge": badge_for_file(entry.name),
+                        "ext": ext,
+                        "is_image": is_img,
+                        "is_video": is_vid,
+                        "is_audio": is_aud,
+                        "is_pdf": is_pdf,
+                        "is_text": is_txt,
                     })
                 except OSError:
                     continue
@@ -1239,9 +1251,8 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     padding: 10px 12px;
     margin-top: 8px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    flex-direction: column;
+    gap: 8px;
     transition: all 0.15s ease;
     animation: fadeUp 0.25s ease forwards;
 }
@@ -1249,42 +1260,188 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     background: var(--bg-hover);
     border-color: var(--border-color);
 }
-.file-left {
+.file-main {
     display: flex;
     align-items: center;
     gap: 10px;
+    cursor: pointer;
     min-width: 0;
-    flex: 1;
+    width: 100%;
+}
+.file-thumb-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-card);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+}
+.file-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 .file-badge {
-    min-width: 40px;
-    height: 28px;
-    border-radius: 4px;
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    border: 1px solid var(--border-color);
+}
+.file-details {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
 }
 .file-name {
-    font-size: 0.86rem;
-    font-weight: 500;
+    font-size: 0.88rem;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: var(--text-primary);
 }
 .file-meta {
     font-size: 0.74rem;
     color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+.preview-btn {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    border-radius: 13px;
+    flex-shrink: 0;
+}
+.file-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-subtle);
+}
+.file-action-btn {
+    flex: 1;
+    height: 28px;
+    padding: 0 6px;
+    font-size: 0.74rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    text-align: center;
+}
+.preview-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+}
+.preview-modal-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-radius);
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+.preview-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    gap: 12px;
+}
+.preview-modal-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.preview-modal-sub {
+    font-size: 0.74rem;
+    color: var(--text-muted);
     margin-top: 1px;
 }
-.file-actions {
+.preview-modal-body {
+    padding: 14px 16px;
+    overflow-y: auto;
     display: flex;
-    gap: 6px;
-    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    max-height: calc(85vh - 120px);
+    background: var(--bg-subtle);
+}
+.preview-modal-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border-subtle);
+}
+.preview-img {
+    max-width: 100%;
+    max-height: 65vh;
+    object-fit: contain;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.preview-video {
+    max-width: 100%;
+    max-height: 65vh;
+    border-radius: 6px;
+    outline: none;
+}
+.preview-audio {
+    width: 100%;
+    max-width: 420px;
+    margin: 20px 0;
+}
+.preview-text {
+    width: 100%;
+    max-height: 60vh;
+    overflow: auto;
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-family: Consolas, monospace;
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-primary);
 }
 .usb-list { display: flex; flex-direction: column; gap: 6px; }
 .usb-option {
@@ -1507,6 +1664,26 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="card-body" style="padding:10px 14px;">
             <div id="filesContainer" style="color:var(--text-secondary);font-size:0.84rem;">Loading...</div>
+    </div>
+
+    <!-- Media and File Preview Dialog -->
+    <div id="previewModal" class="preview-modal-backdrop" style="display:none;" onclick="handleModalBackdropClick(event)">
+        <div class="preview-modal-card animate-in">
+            <div class="preview-modal-head">
+                <div style="min-width:0;flex:1;">
+                    <div id="previewTitle" class="preview-modal-title">File Preview</div>
+                    <div id="previewSub" class="preview-modal-sub">Details</div>
+                </div>
+                <button type="button" class="btn btn-outline" style="width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:50%;" onclick="closePreview()">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div id="previewBody" class="preview-modal-body"></div>
+            <div class="preview-modal-foot">
+                <a id="previewDownloadBtn" class="btn btn-primary" href="#" download>Download</a>
+                <button type="button" class="btn btn-outline" onclick="copyCurrentPreviewLink()">Copy Link</button>
+                <button type="button" class="btn btn-outline" onclick="closePreview()">Close</button>
+            </div>
         </div>
     </div>
 
@@ -1747,67 +1924,185 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
                 const item = document.createElement('div');
                 item.className = 'file-card';
 
-                const left = document.createElement('div');
-                left.className = 'file-left';
+                const mainRow = document.createElement('div');
+                mainRow.className = 'file-main';
+                mainRow.onclick = () => openPreview(f);
 
-                const tag = document.createElement('div');
-                tag.className = 'file-badge';
-                tag.textContent = f.badge;
+                if (f.is_image) {
+                    const thumbBox = document.createElement('div');
+                    thumbBox.className = 'file-thumb-box';
+                    const img = document.createElement('img');
+                    img.className = 'file-thumb-img';
+                    img.src = '/view/' + f.encoded;
+                    img.loading = 'lazy';
+                    img.alt = f.name;
+                    thumbBox.appendChild(img);
+                    mainRow.appendChild(thumbBox);
+                } else {
+                    const tag = document.createElement('div');
+                    tag.className = 'file-badge';
+                    tag.textContent = f.badge;
+                    mainRow.appendChild(tag);
+                }
 
-                const meta = document.createElement('div');
-                meta.style.minWidth = '0';
-                meta.style.flex = '1';
+                const details = document.createElement('div');
+                details.className = 'file-details';
+
                 const title = document.createElement('div');
                 title.className = 'file-name';
+                title.title = f.name;
                 title.textContent = f.name;
+
                 const sub = document.createElement('div');
                 sub.className = 'file-meta';
-                sub.textContent = `${f.size} | ${f.time_str}`;
-                meta.appendChild(title);
-                meta.appendChild(sub);
+                sub.textContent = `${f.size} • ${f.time_str}`;
 
-                left.appendChild(tag);
-                left.appendChild(meta);
+                details.appendChild(title);
+                details.appendChild(sub);
+                mainRow.appendChild(details);
 
-                const actions = document.createElement('div');
-                actions.className = 'file-actions';
+                const btnPreview = document.createElement('button');
+                btnPreview.type = 'button';
+                btnPreview.className = 'btn btn-outline preview-btn';
+                btnPreview.textContent = 'Preview';
+                btnPreview.onclick = (e) => {
+                    e.stopPropagation();
+                    openPreview(f);
+                };
+                mainRow.appendChild(btnPreview);
+
+                const actionsRow = document.createElement('div');
+                actionsRow.className = 'file-actions-row';
 
                 const aDl = document.createElement('a');
-                aDl.className = 'btn btn-outline';
-                aDl.style.height = '28px';
-                aDl.style.padding = '0 9px';
-                aDl.style.fontSize = '0.74rem';
+                aDl.className = 'btn btn-outline file-action-btn';
                 aDl.href = '/download/' + f.encoded;
-                aDl.setAttribute('download', '');
+                aDl.setAttribute('download', f.name);
                 aDl.textContent = 'Download';
 
                 const bShare = document.createElement('button');
-                bShare.className = 'btn btn-outline';
-                bShare.style.height = '28px';
-                bShare.style.padding = '0 9px';
-                bShare.style.fontSize = '0.74rem';
+                bShare.type = 'button';
+                bShare.className = 'btn btn-outline file-action-btn';
                 bShare.textContent = 'Copy';
                 bShare.onclick = () => generateFileLink(f.encoded);
 
                 const bDel = document.createElement('button');
-                bDel.className = 'btn btn-danger';
-                bDel.style.height = '28px';
-                bDel.style.padding = '0 9px';
-                bDel.style.fontSize = '0.74rem';
+                bDel.type = 'button';
+                bDel.className = 'btn btn-danger file-action-btn';
                 bDel.textContent = 'Delete';
                 bDel.onclick = () => deleteUsbFile(f.name, f.encoded);
 
-                actions.appendChild(aDl);
-                actions.appendChild(bShare);
-                actions.appendChild(bDel);
+                actionsRow.appendChild(aDl);
+                actionsRow.appendChild(bShare);
+                actionsRow.appendChild(bDel);
 
-                item.appendChild(left);
-                item.appendChild(actions);
+                item.appendChild(mainRow);
+                item.appendChild(actionsRow);
                 filesContainer.appendChild(item);
             });
         } catch (err) {
             filesContainer.innerHTML = '<div style="color:var(--danger-text);text-align:center;">Unable to load file list.</div>';
         }
+    }
+
+    let currentPreviewFile = null;
+
+    function handleModalBackdropClick(e) {
+        if (e.target && e.target.id === 'previewModal') {
+            closePreview();
+        }
+    }
+
+    function closePreview() {
+        const modal = document.getElementById('previewModal');
+        const body = document.getElementById('previewBody');
+        if (modal) modal.style.display = 'none';
+        if (body) body.innerHTML = '';
+        document.body.style.overflow = '';
+        currentPreviewFile = null;
+    }
+
+    function copyCurrentPreviewLink() {
+        if (currentPreviewFile) {
+            generateFileLink(currentPreviewFile.encoded);
+        }
+    }
+
+    function openPreview(f) {
+        currentPreviewFile = f;
+        const modal = document.getElementById('previewModal');
+        const title = document.getElementById('previewTitle');
+        const sub = document.getElementById('previewSub');
+        const body = document.getElementById('previewBody');
+        const dlBtn = document.getElementById('previewDownloadBtn');
+
+        if (!modal || !body) return;
+
+        title.textContent = f.name;
+        sub.textContent = `${f.size} • ${f.time_str}`;
+        dlBtn.href = '/download/' + f.encoded;
+        dlBtn.setAttribute('download', f.name);
+
+        body.innerHTML = '';
+
+        if (f.is_image) {
+            const img = document.createElement('img');
+            img.className = 'preview-img';
+            img.src = '/view/' + f.encoded;
+            img.alt = f.name;
+            body.appendChild(img);
+        } else if (f.is_video) {
+            const vid = document.createElement('video');
+            vid.className = 'preview-video';
+            vid.src = '/view/' + f.encoded;
+            vid.controls = true;
+            vid.autoplay = true;
+            vid.playsInline = true;
+            body.appendChild(vid);
+        } else if (f.is_audio) {
+            const aud = document.createElement('audio');
+            aud.className = 'preview-audio';
+            aud.src = '/view/' + f.encoded;
+            aud.controls = true;
+            aud.autoplay = true;
+            body.appendChild(aud);
+        } else if (f.is_pdf) {
+            const frame = document.createElement('iframe');
+            frame.style.width = '100%';
+            frame.style.height = '65vh';
+            frame.style.border = 'none';
+            frame.style.borderRadius = '6px';
+            frame.src = '/view/' + f.encoded;
+            body.appendChild(frame);
+        } else if (f.is_text) {
+            const pre = document.createElement('pre');
+            pre.className = 'preview-text';
+            pre.textContent = 'Loading text content...';
+            body.appendChild(pre);
+
+            fetch('/view/' + f.encoded)
+                .then(r => r.text())
+                .then(txt => {
+                    pre.textContent = txt.slice(0, 100000) + (txt.length > 100000 ? '\\n\\n... (truncated)' : '');
+                })
+                .catch(() => {
+                    pre.textContent = 'Unable to read file contents.';
+                });
+        } else {
+            const generic = document.createElement('div');
+            generic.style.textAlign = 'center';
+            generic.style.padding = '24px 0';
+            generic.innerHTML = `
+                <div class="file-badge" style="width:56px;height:56px;font-size:1.1rem;margin:0 auto 12px;border-radius:10px;">${f.badge}</div>
+                <div style="font-weight:600;font-size:0.95rem;margin-bottom:4px;color:var(--text-primary);">${f.name}</div>
+                <div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:16px;">${f.size} • ${f.time_str}</div>
+                <a href="/download/${f.encoded}" download="${f.name}" class="btn btn-primary" style="height:34px;padding:0 18px;display:inline-flex;align-items:center;">Download File</a>
+            `;
+            body.appendChild(generic);
+        }
+
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
     }
 
     loadUsbFiles();
@@ -2939,6 +3234,20 @@ def download_route(filename):
         return "<h3 style='color:#dc2626;text-align:center;font-family:sans-serif;'>File not found on USB drive.</h3>", 404
     try:
         return send_from_directory(st["upload_dir"], clean, as_attachment=True)
+    except OSError:
+        return jsonify({"ok": False, "error": "Could not read file from USB drive."}), 500
+
+
+@app.route("/view/<path:filename>", methods=["GET"])
+@require_auth
+def view_route(filename):
+    st = resolve_storage()
+    clean = os.path.basename(filename)
+    target = os.path.join(st["upload_dir"], clean)
+    if not os.path.isfile(target) or clean.endswith(".part"):
+        return "<h3 style='color:#dc2626;text-align:center;font-family:sans-serif;'>File not found on USB drive.</h3>", 404
+    try:
+        return send_from_directory(st["upload_dir"], clean, as_attachment=False)
     except OSError:
         return jsonify({"ok": False, "error": "Could not read file from USB drive."}), 500
 
