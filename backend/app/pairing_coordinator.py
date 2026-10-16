@@ -25,9 +25,12 @@ class PairingCoordinator:
         client_id = request_data.get("client_id")
         token = request_data.get("token")
 
+        request_id = request_data.get("request_id", "")
+
         if not self.rate_limiter.is_allowed(f"pair:{client_ip}"):
             await client_ws.send_text(json.dumps({
                 "action": "PAIRING_RESULT",
+                "request_id": request_id,
                 "status": "REJECTED",
                 "reason": "RATE_LIMIT_EXCEEDED"
             }))
@@ -37,6 +40,7 @@ class PairingCoordinator:
         if not receiver_session:
             await client_ws.send_text(json.dumps({
                 "action": "PAIRING_RESULT",
+                "request_id": request_id,
                 "status": "REJECTED",
                 "reason": "RECEIVER_OFFLINE"
             }))
@@ -45,6 +49,7 @@ class PairingCoordinator:
         # Forward request to Windows Receiver
         forward_msg = {
             "action": "PAIRING_REQUEST",
+            "request_id": request_id,
             "client_id": client_id,
             "client_name": request_data.get("client_name", "Android Phone"),
             "client_pubkey": request_data.get("client_pubkey"),

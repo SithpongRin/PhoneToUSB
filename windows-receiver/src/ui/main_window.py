@@ -177,7 +177,7 @@ class MainWindow:
         )
         title_lbl.pack(anchor="w")
 
-        sub_text = f"Portable Receiver v1.0.0  •  {self.app.identity.friendly_name}"
+        sub_text = f"Portable Receiver v1.0.2  •  {self.app.identity.friendly_name}"
         sub_lbl = tk.Label(
             left,
             text=sub_text,
@@ -377,7 +377,7 @@ class MainWindow:
         rem = self.app.pairing_service.remaining_seconds
         if rem > 0:
             self.lbl_countdown.configure(
-                text=f"Single-use QR code expires in: {rem} seconds",
+                text=f"QR expires in: {rem}s  •  Wi-Fi Server: {self.app.pairing_service.backend_url}",
                 fg=ACCENT_CYAN
             )
             self._timer_after_id = self.root.after(1000, self._update_timer)
@@ -550,7 +550,7 @@ class MainWindow:
             bg=BG_CARD
         ).pack(anchor="w", pady=(0, 16))
 
-        self.lbl_update_status = tk.Label(view, text="Installed Version: v1.0.1 (Official)", font=("Segoe UI", 10), fg=TEXT_SECONDARY, bg=BG_CARD)
+        self.lbl_update_status = tk.Label(view, text="Installed Version: v1.0.2 (Official)", font=("Segoe UI", 10), fg=TEXT_SECONDARY, bg=BG_CARD)
         self.lbl_update_status.pack(anchor="w", pady=(0, 16))
 
         self.btn_check_update = tk.Button(
@@ -588,7 +588,7 @@ class MainWindow:
         server_box.pack(fill="x", pady=(24, 0))
 
         tk.Label(server_box, text="Coordination Server Address (Used in QR Code)", font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg=BG_MAIN).pack(anchor="w", pady=(0, 4))
-        tk.Label(server_box, text="Set your laptop's Wi-Fi IP (e.g. ws://192.168.1.5:8000/ws/receiver) or public domain for global access.", font=("Segoe UI", 8), fg=TEXT_MUTED, bg=BG_MAIN).pack(anchor="w", pady=(0, 8))
+        tk.Label(server_box, text="Set your laptop's Wi-Fi IP (e.g. ws://192.168.1.5:8000/ws/client) or public domain for global access.", font=("Segoe UI", 8), fg=TEXT_MUTED, bg=BG_MAIN).pack(anchor="w", pady=(0, 8))
 
         url_row = tk.Frame(server_box, bg=BG_MAIN)
         url_row.pack(fill="x")
@@ -619,7 +619,7 @@ class MainWindow:
         if new_url:
             self.app.backend_url = new_url
             self.app.pairing_service.backend_url = new_url
-            self.app.signaling_client.backend_ws_url = new_url
+            self.app.signaling_client.backend_ws_url = self.app._resolve_signaling_url(new_url)
             self.app.signaling_client.stop()
             self._on_generate_qr_clicked()
             asyncio.run_coroutine_threadsafe(self.app.signaling_client.start(), self.loop)
@@ -633,16 +633,16 @@ class MainWindow:
             try:
                 res = future.result(timeout=10)
                 if res.get("update_available") or res.get("download_url"):
-                    text = f"Official Release available: v{res['latest_version']} (Current: v1.0.1)"
+                    text = f"Official Release available: v{res['latest_version']} (Current: v1.0.2)"
                     def show_btn():
                         self.lbl_update_status.configure(text=text, fg=ACCENT_CYAN)
                         self.btn_apply_update.pack(anchor="w", pady=(8, 0))
                     self.root.after(0, show_btn)
                 else:
-                    text = "PhoneToUSB is fully up to date (Version 1.0.1)"
+                    text = "PhoneToUSB is fully up to date (Version 1.0.2)"
                     self.root.after(0, lambda: self.lbl_update_status.configure(text=text, fg=COLOR_SUCCESS))
             except Exception as e:
-                self.root.after(0, lambda: self.lbl_update_status.configure(text=f"Running version v1.0.1.", fg=TEXT_SECONDARY))
+                self.root.after(0, lambda: self.lbl_update_status.configure(text=f"Running version v1.0.2.", fg=TEXT_SECONDARY))
 
         threading.Thread(target=run_check, daemon=True).start()
 

@@ -23,6 +23,7 @@ try:
     from .transfer_service import TransferService, TransferError
     from .signaling_client import SignalingClient
     from .update_service import UpdateService
+    from .embedded_server import EmbeddedCoordinationServer
 except (ImportError, ValueError):
     from logging_service import setup_logger, get_logger
     from usb_manager import USBManager, USBStatus
@@ -33,14 +34,22 @@ except (ImportError, ValueError):
     from transfer_service import TransferService, TransferError
     from signaling_client import SignalingClient
     from update_service import UpdateService
+    from embedded_server import EmbeddedCoordinationServer
 
 logger = get_logger()
 
 DEFAULT_BACKEND_URL = "ws://127.0.0.1:8000/ws/receiver"
 
 class PhoneToUSBApp:
-    def __init__(self, backend_url: str = DEFAULT_BACKEND_URL, usb_override_path: Optional[Path] = None):
+    def __init__(
+        self,
+        backend_url: str = DEFAULT_BACKEND_URL,
+        usb_override_path: Optional[Path] = None,
+        enable_embedded_server: bool = True
+    ):
         self.backend_url = backend_url
+        self.enable_embedded_server = enable_embedded_server
+        self.embedded_server = EmbeddedCoordinationServer(host="0.0.0.0", port=8000)
         self.usb_manager = USBManager(override_path=usb_override_path)
         self.usb_root, self.usb_status = self.usb_manager.detect_usb_root()
 
@@ -71,8 +80,13 @@ class PhoneToUSBApp:
         self.on_pairing_prompt_callback: Optional[Callable[[Dict[str, Any], asyncio.Future], None]] = None
         self.on_transfer_progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None
 
+        # If using the local port 8000 server, connect signaling client via 127.0.0.1
+        # so VPNs (like Cloudflare WARP) never block local receiver registration,
+        # while pairing_service advertises the LAN Wi-Fi IP in the QR code for the phone.
+        signaling_url = self._resolve_signaling_url(self.backend_url)
+
         self.signaling_client = SignalingClient(
-            backend_ws_url=self.backend_url,
+            backend_ws_url=signaling_url,
             identity=self.identity,
             pairing_service=self.pairing_service,
             auth_service=self.auth_service,
@@ -82,6 +96,12 @@ class PhoneToUSBApp:
         )
 
         self._monitor_task: Optional[asyncio.Task] = None
+
+    @staticmethod
+    def _resolve_signaling_url(advertised_url: str) -> str:
+        if ":8000" in advertised_url and advertised_url.startswith("ws://"):
+            return "ws://127.0.0.1:8000/ws/receiver"
+        return advertised_url
 
     def _handle_network_status_change(self, status: str):
         if self.on_status_change_callback:
@@ -247,7 +267,9 @@ class PhoneToUSBApp:
         await self.signaling_client.send_to_client(client_id, response)
 
     async def start(self):
-        """Starts background tasks: USB monitor and signaling client."""
+        """Starts background tasks: embedded server, USB monitor, and signaling client."""
+        if self.enable_embedded_server:
+            await self.embedded_server.start()
         self._monitor_task = asyncio.create_task(self._usb_monitor_loop())
         await self.signaling_client.start()
 
@@ -256,6 +278,8 @@ class PhoneToUSBApp:
         if self._monitor_task:
             self._monitor_task.cancel()
         self.signaling_client.stop()
+        if self.enable_embedded_server:
+            await self.embedded_server.stop()
 
     async def _usb_monitor_loop(self):
         """Periodically polls USB volume state to detect insertion or removal."""

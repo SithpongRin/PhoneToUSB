@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import httpx
 
-CURRENT_VERSION = "1.0.1"
+CURRENT_VERSION = "1.0.2"
 
 class UpdateService:
     def __init__(self, usb_root: Path, github_repo: str = "SithpongRin/PhoneToUSB"):

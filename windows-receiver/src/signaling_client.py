@@ -172,6 +172,7 @@ class SignalingClient:
 
     async def _handle_pairing_request(self, msg: Dict[str, Any]):
         client_id = msg.get("client_id")
+        request_id = msg.get("request_id", "")
         client_pubkey = msg.get("client_pubkey")
         client_name = msg.get("client_name", "Android Phone")
         token = msg.get("token")
@@ -183,6 +184,7 @@ class SignalingClient:
             logger.warning("Pairing attempt with invalid or expired token")
             await self._send_json({
                 "action": "PAIRING_RESULT",
+                "request_id": request_id,
                 "client_id": client_id,
                 "status": "REJECTED",
                 "reason": "INVALID_OR_EXPIRED_TOKEN"
@@ -202,6 +204,7 @@ class SignalingClient:
                 logger.info(f"Approved pairing for device: {client_name} ({client_id})")
                 await self._send_json({
                     "action": "PAIRING_RESULT",
+                    "request_id": request_id,
                     "client_id": client_id,
                     "status": "APPROVED",
                     "receiver_friendly_name": self.identity.friendly_name,
@@ -212,6 +215,7 @@ class SignalingClient:
                 logger.info(f"Rejected pairing for device: {client_name}")
                 await self._send_json({
                     "action": "PAIRING_RESULT",
+                    "request_id": request_id,
                     "client_id": client_id,
                     "status": "REJECTED",
                     "reason": "USER_REJECTED"

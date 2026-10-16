@@ -368,13 +368,18 @@ fun PairingScreen(
         )
     }
 
+    var isManualEntry by remember { mutableStateOf(false) }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasCameraPermission = isGranted
+        if (isGranted) {
+            isManualEntry = false
+        }
     }
 
-    var isManualEntry by remember { mutableStateOf(!hasCameraPermission) }
+    var serverUrlInput by remember { mutableStateOf(client.backendUrl) }
     var receiverIdInput by remember { mutableStateOf("") }
     var tokenInput by remember { mutableStateOf("") }
     var friendlyNameInput by remember { mutableStateOf("My Android Phone") }
@@ -562,7 +567,17 @@ fun PairingScreen(
                         color = TextMuted
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = serverUrlInput,
+                        onValueChange = { serverUrlInput = it },
+                        label = { Text("Wi-Fi Server URL (e.g. ws://10.55.2.164:8000/ws/client)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedTextField(
                         value = receiverIdInput,
@@ -572,7 +587,7 @@ fun PairingScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedTextField(
                         value = tokenInput,
@@ -582,7 +597,7 @@ fun PairingScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedTextField(
                         value = friendlyNameInput,
@@ -592,10 +607,10 @@ fun PairingScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     Button(
-                        onClick = { submitPairing(receiverIdInput, tokenInput) },
+                        onClick = { submitPairing(receiverIdInput, tokenInput, serverUrlInput) },
                         enabled = !isPairing && receiverIdInput.isNotBlank() && tokenInput.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(containerColor = SkyPrimary),
                         shape = RoundedCornerShape(10.dp),

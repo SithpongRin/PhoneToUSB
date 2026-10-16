@@ -16,16 +16,20 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class SignalingClient(private val context: Context, initialBackendUrl: String = "ws://10.0.2.2:8000/ws/client") {
+class SignalingClient(private val context: Context, initialBackendUrl: String = "ws://10.55.2.164:8000/ws/client") {
+    private val prefs = context.getSharedPreferences("phonetousb_prefs", Context.MODE_PRIVATE)
+
     private val client = OkHttpClient.Builder()
         .pingInterval(15, TimeUnit.SECONDS)
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
-    var backendUrl: String = normalizeClientUrl(initialBackendUrl)
+    var backendUrl: String = normalizeClientUrl(prefs.getString("backend_url", initialBackendUrl) ?: initialBackendUrl)
         set(value) {
-            field = normalizeClientUrl(value)
+            val normalized = normalizeClientUrl(value)
+            field = normalized
+            prefs.edit().putString("backend_url", normalized).apply()
         }
 
     private var webSocket: WebSocket? = null
@@ -129,6 +133,12 @@ class SignalingClient(private val context: Context, initialBackendUrl: String = 
                     map[rid] = presenceObj.get(rid)?.asBoolean ?: false
                 }
                 _receiverPresence.value = map
+            } else if (action == "PAIRING_RESULT") {
+                val reqId = json.get("request_id")?.asString
+                if (!reqId.isNullOrBlank() && pendingRequests.containsKey(reqId)) {
+                    pendingRequests.remove(reqId)?.complete(json)
+                }
+                pendingRequests.remove("PAIRING_PENDING")?.complete(json)
             } else if (json.has("request_id")) {
                 val reqId = json.get("request_id").asString
                 pendingRequests.remove(reqId)?.complete(json)
@@ -149,12 +159,16 @@ class SignalingClient(private val context: Context, initialBackendUrl: String = 
         // Ensure WebSocket is alive and ready
         val isReady = ensureConnected(7000)
         if (!isReady) {
-            return Pair(false, "Cannot connect to server ($backendUrl). Ensure laptop and phone are on the same Wi-Fi/Internet.")
+            return Pair(false, "Cannot connect to server ($backendUrl). Ensure laptop and phone are on the same Wi-Fi/Hotspot.")
         }
+
+        // Small delay to ensure initial client_id HELLO is processed first
+        delay(150)
 
         val reqId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<JsonObject>()
         pendingRequests[reqId] = deferred
+        pendingRequests["PAIRING_PENDING"] = deferred
 
         val msg = JsonObject().apply {
             addProperty("action", "PAIRING_REQUEST")
@@ -169,11 +183,14 @@ class SignalingClient(private val context: Context, initialBackendUrl: String = 
         val sent = webSocket?.send(msg.toString()) ?: false
         if (!sent) {
             pendingRequests.remove(reqId)
+            pendingRequests.remove("PAIRING_PENDING")
             return Pair(false, "Failed to send packet over network")
         }
 
         return try {
             val res = withTimeout(60000) { deferred.await() }
+            pendingRequests.remove(reqId)
+            pendingRequests.remove("PAIRING_PENDING")
             val status = res.get("status")?.asString
             if (status == "APPROVED") {
                 Pair(true, res.get("receiver_friendly_name")?.asString ?: "PhoneToUSB Drive")
@@ -182,6 +199,7 @@ class SignalingClient(private val context: Context, initialBackendUrl: String = 
             }
         } catch (e: Exception) {
             pendingRequests.remove(reqId)
+            pendingRequests.remove("PAIRING_PENDING")
             Pair(false, "Waiting timed out. Please click 'Approve' promptly on your laptop.")
         }
     }

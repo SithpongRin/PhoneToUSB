@@ -13,6 +13,7 @@ hidden_imports = [
     'pairing_service',
     'transfer_service',
     'signaling_client',
+    'embedded_server',
     'logging_service',
     'ui',
     'ui.main_window',

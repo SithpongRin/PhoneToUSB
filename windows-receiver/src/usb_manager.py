@@ -35,6 +35,8 @@ class USBManager:
         """
         if self.override_path:
             target = Path(self.override_path).resolve()
+            drive, _ = os.path.splitdrive(str(target))
+            root_path = target
         else:
             if getattr(sys, "frozen", False):
                 # Running as compiled PyInstaller executable
@@ -43,13 +45,13 @@ class USBManager:
                 # Running as Python script
                 target = Path(__file__).resolve().parent.parent
 
-        drive, _ = os.path.splitdrive(str(target))
-        if not drive:
-            self._is_ready = False
-            self._last_error = "Could not identify volume drive letter"
-            return None, USBStatus.NOT_FOUND
+            drive, _ = os.path.splitdrive(str(target))
+            if not drive:
+                self._is_ready = False
+                self._last_error = "Could not identify volume drive letter"
+                return None, USBStatus.NOT_FOUND
 
-        root_path = Path(f"{drive}\\") if platform.system() == "Windows" else target
+            root_path = Path(f"{drive}\\") if platform.system() == "Windows" else target
 
         # Check existence and writeability
         status = self.verify_volume(root_path)

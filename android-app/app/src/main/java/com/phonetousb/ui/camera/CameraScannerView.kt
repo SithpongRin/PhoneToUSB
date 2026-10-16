@@ -1,5 +1,6 @@
 package com.phonetousb.ui.camera
 
+import android.util.Size
 import android.view.ViewGroup
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -28,7 +29,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.phonetousb.ui.theme.SkyLight
-import com.phonetousb.ui.theme.SkyPrimary
 import java.util.concurrent.Executors
 
 @Composable
@@ -38,6 +38,7 @@ fun CameraScannerView(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnQrDetected by rememberUpdatedState(onQrCodeDetected)
 
     var camera by remember { mutableStateOf<Camera?>(null) }
     var isTorchOn by remember { mutableStateOf(false) }
@@ -45,52 +46,53 @@ fun CameraScannerView(
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val qrAnalyzer = remember {
         QrCodeAnalyzer { result ->
-            onQrCodeDetected(result)
+            currentOnQrDetected(result)
         }
     }
 
-    // Scanning laser bar animation
-    val infiniteTransition = rememberInfiniteTransition(label = "Laser")
-    val laserY by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "LaserY"
-    )
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+                if (cameraProviderFuture.isDone) {
+                    cameraProviderFuture.get().unbindAll()
+                }
+            } catch (_: Exception) {}
+            cameraExecutor.shutdown()
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // CameraX Live Preview
+        // CameraX Live Preview — bound ONCE in factory so animations never unbind the camera
         AndroidView(
             factory = { ctx ->
-                PreviewView(ctx).apply {
+                val previewView = PreviewView(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     scaleType = PreviewView.ScaleType.FILL_CENTER
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                 }
-            },
-            update = { previewView ->
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-                cameraProviderFuture.addListener({
-                    val cameraProvider = cameraProviderFuture.get()
-                    val preview = Preview.Builder().build().also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
 
-                    val imageAnalysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .also {
-                            it.setAnalyzer(cameraExecutor, qrAnalyzer)
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                cameraProviderFuture.addListener({
+                    try {
+                        val cameraProvider = cameraProviderFuture.get()
+                        val preview = Preview.Builder().build().also {
+                            it.surfaceProvider = previewView.surfaceProvider
                         }
 
-                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                        @Suppress("DEPRECATION")
+                        val imageAnalysis = ImageAnalysis.Builder()
+                            .setTargetResolution(Size(1280, 720))
+                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .build()
+                            .also {
+                                it.setAnalyzer(cameraExecutor, qrAnalyzer)
+                            }
 
-                    try {
+                        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
                         cameraProvider.unbindAll()
                         camera = cameraProvider.bindToLifecycle(
                             lifecycleOwner,
@@ -99,37 +101,19 @@ fun CameraScannerView(
                             imageAnalysis
                         )
                     } catch (_: Exception) {}
-                }, ContextCompat.getMainExecutor(context))
+                }, ContextCompat.getMainExecutor(ctx))
+
+                previewView
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // Semi-transparent darkened background mask with cutout
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0x77000000))
-        )
-
-        // Viewfinder targeting frame
-        Box(
+        // Viewfinder targeting frame (isolated Composable so laser animation does not recompose CameraX)
+        ScannerLaserBox(
             modifier = Modifier
                 .size(260.dp)
                 .align(Alignment.Center)
-                .border(2.dp, SkyLight, RoundedCornerShape(16.dp))
-                .background(Color.Transparent)
-        ) {
-            // Animated Scanning Laser Line
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val y = size.height * laserY
-                drawLine(
-                    color = SkyLight,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 3.dp.toPx()
-                )
-            }
-        }
+        )
 
         // Flashlight Toggle Button
         IconButton(
@@ -150,6 +134,36 @@ fun CameraScannerView(
                 imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
                 contentDescription = "Torch",
                 tint = if (isTorchOn) SkyLight else Color.White
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScannerLaserBox(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "Laser")
+    val laserY by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "LaserY"
+    )
+
+    Box(
+        modifier = modifier
+            .border(2.5.dp, SkyLight, RoundedCornerShape(16.dp))
+            .background(Color.Transparent)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val y = size.height * laserY
+            drawLine(
+                color = SkyLight,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 3.dp.toPx()
             )
         }
     }

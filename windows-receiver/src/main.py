@@ -25,28 +25,56 @@ import pairing_service
 import transfer_service
 import signaling_client
 import update_service
+import embedded_server
 import ui.main_window
 
 from application import PhoneToUSBApp
 from ui.main_window import MainWindow
 
 def resolve_lan_ip() -> str:
-    """Detects the laptop's local network IP address."""
+    """
+    Detects the laptop's real local Wi-Fi / LAN IP address, ignoring virtual VPN
+    tunnels such as Cloudflare WARP (172.16.0.2) and loopback/APIPA addresses.
+    """
+    candidates = []
+    try:
+        _, _, ip_list = socket.gethostbyname_ex(socket.gethostname())
+        for ip in ip_list:
+            if ip.startswith("127.") or ip.startswith("169.254.") or ip.startswith("172.16.0."):
+                continue
+            candidates.append(ip)
+    except Exception:
+        pass
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        udp_ip = s.getsockname()[0]
         s.close()
-        return ip
+        if (
+            not udp_ip.startswith("127.")
+            and not udp_ip.startswith("169.254.")
+            and not udp_ip.startswith("172.16.0.")
+            and udp_ip not in candidates
+        ):
+            candidates.insert(0, udp_ip)
     except Exception:
-        return "127.0.0.1"
+        pass
+
+    # Prefer standard Wi-Fi / LAN private subnets (192.168.x.x, 10.x.x.x)
+    for ip in candidates:
+        if ip.startswith("192.168.") or ip.startswith("10."):
+            return ip
+    if candidates:
+        return candidates[0]
+    return "127.0.0.1"
 
 def run_app():
     root = tk.Tk()
     async_loop = asyncio.new_event_loop()
 
     lan_ip = resolve_lan_ip()
-    default_url = f"ws://{lan_ip}:8000/ws/receiver"
+    default_url = f"ws://{lan_ip}:8000/ws/client"
     backend_url = os.environ.get("PHONETOUSB_BACKEND_URL", default_url)
 
     app_coordinator = PhoneToUSBApp(backend_url=backend_url)
