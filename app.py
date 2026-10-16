@@ -530,53 +530,61 @@ def require_auth(fn):
 
 SHARED_CSS = """
 :root {
-    --bg-primary: #f8fafc;
-    --bg-secondary: #ffffff;
-    --bg-subtle: #f1f5f9;
-    --bg-glass: rgba(255, 255, 255, 0.85);
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --text-muted: #94a3b8;
-    --accent: #4f46e5;
-    --accent-hover: #4338ca;
-    --accent-soft: rgba(79, 70, 229, 0.1);
-    --accent-glow: rgba(79, 70, 229, 0.25);
-    --border-color: #e2e8f0;
-    --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
-    --shadow-lg: 0 12px 32px -4px rgba(15, 23, 42, 0.08);
-    --success-bg: rgba(16, 185, 129, 0.12);
+    --bg-canvas: #f3f3f3;
+    --card-bg: rgba(255, 255, 255, 0.85);
+    --card-head-bg: rgba(255, 255, 255, 0.45);
+    --border-color: rgba(0, 0, 0, 0.08);
+    --border-subtle: rgba(0, 0, 0, 0.05);
+    --bg-subtle: rgba(0, 0, 0, 0.025);
+    --bg-hover: rgba(0, 0, 0, 0.05);
+    --text-primary: #181818;
+    --text-secondary: #5c5c5c;
+    --text-muted: #888888;
+    --accent: #0067c0;
+    --accent-hover: #005aa3;
+    --accent-soft: rgba(0, 103, 192, 0.08);
+    --accent-glow: rgba(0, 103, 192, 0.2);
+    --accent-text: #ffffff;
+    --btn-outline-bg: rgba(255, 255, 255, 0.7);
+    --btn-outline-border: rgba(0, 0, 0, 0.12);
+    --success-bg: rgba(16, 185, 129, 0.1);
     --success-text: #059669;
-    --success-border: rgba(16, 185, 129, 0.3);
-    --danger-bg: rgba(239, 68, 68, 0.12);
+    --success-border: rgba(16, 185, 129, 0.25);
+    --danger-bg: rgba(239, 68, 68, 0.08);
     --danger-text: #dc2626;
-    --danger-border: rgba(239, 68, 68, 0.3);
-    --mesh-1: rgba(79, 70, 229, 0.08);
-    --mesh-2: rgba(14, 165, 233, 0.08);
+    --danger-border: rgba(239, 68, 68, 0.22);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.03), 0 2px 8px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.03);
+    --card-radius: 12px;
+    --btn-radius: 6px;
 }
 
 [data-theme="dark"] {
-    --bg-primary: #090d16;
-    --bg-secondary: #111827;
-    --bg-subtle: #1e293b;
-    --bg-glass: rgba(17, 24, 39, 0.85);
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --text-muted: #64748b;
-    --accent: #6366f1;
-    --accent-hover: #818cf8;
-    --accent-soft: rgba(99, 102, 241, 0.15);
-    --accent-glow: rgba(99, 102, 241, 0.35);
-    --border-color: #1f2937;
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 16px 40px -4px rgba(0, 0, 0, 0.5);
-    --success-bg: rgba(16, 185, 129, 0.15);
+    --bg-canvas: #202020;
+    --card-bg: rgba(38, 38, 38, 0.82);
+    --card-head-bg: rgba(255, 255, 255, 0.02);
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    --bg-subtle: rgba(255, 255, 255, 0.03);
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --text-primary: #ffffff;
+    --text-secondary: #9e9e9e;
+    --text-muted: #6e6e6e;
+    --accent: #4cc2ff;
+    --accent-hover: #33b0f0;
+    --accent-soft: rgba(76, 194, 255, 0.12);
+    --accent-glow: rgba(76, 194, 255, 0.25);
+    --accent-text: #000000;
+    --btn-outline-bg: rgba(255, 255, 255, 0.04);
+    --btn-outline-border: rgba(255, 255, 255, 0.09);
+    --success-bg: rgba(16, 185, 129, 0.14);
     --success-text: #34d399;
-    --success-border: rgba(16, 185, 129, 0.35);
-    --danger-bg: rgba(239, 68, 68, 0.15);
+    --success-border: rgba(16, 185, 129, 0.28);
+    --danger-bg: rgba(239, 68, 68, 0.12);
     --danger-text: #f87171;
-    --danger-border: rgba(239, 68, 68, 0.35);
-    --mesh-1: rgba(99, 102, 241, 0.14);
-    --mesh-2: rgba(14, 165, 233, 0.1);
+    --danger-border: rgba(239, 68, 68, 0.25);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 * {
@@ -586,96 +594,80 @@ SHARED_CSS = """
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: var(--bg-primary);
-    background-image:
-        radial-gradient(at 15% 15%, var(--mesh-1) 0px, transparent 50%),
-        radial-gradient(at 85% 85%, var(--mesh-2) 0px, transparent 50%);
-    background-attachment: fixed;
+    font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    background-color: var(--bg-canvas);
     color: var(--text-primary);
     min-height: 100vh;
-    line-height: 1.5;
-    transition: background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1), color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    line-height: 1.45;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(14px) scale(0.99); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes pulseDot {
     0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.35); opacity: 0.65; }
-}
-
-@keyframes floatSlow {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-4px); }
+    50% { transform: scale(1.3); opacity: 0.6; }
 }
 
 .animate-in {
-    animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.delay-1 { animation-delay: 0.06s; opacity: 0; }
-.delay-2 { animation-delay: 0.12s; opacity: 0; }
-.delay-3 { animation-delay: 0.18s; opacity: 0; }
+.delay-1 { animation-delay: 0.04s; opacity: 0; }
+.delay-2 { animation-delay: 0.08s; opacity: 0; }
+.delay-3 { animation-delay: 0.12s; opacity: 0; }
 
 .theme-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    height: 40px;
-    padding: 0 14px;
-    border-radius: 999px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--btn-radius);
+    border: 1px solid var(--btn-outline-border);
+    background: var(--btn-outline-bg);
     color: var(--text-primary);
-    font-size: 0.82rem;
-    font-weight: 600;
+    font-size: 0.78rem;
+    font-weight: 500;
     cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s ease;
 }
 
 .theme-toggle:hover {
-    transform: translateY(-1px);
-    border-color: var(--accent);
-    box-shadow: 0 4px 12px var(--accent-glow);
+    background: var(--bg-hover);
+    border-color: var(--border-color);
 }
 
 .theme-toggle:active {
-    transform: scale(0.96);
+    transform: scale(0.98);
 }
 
 .theme-toggle svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     stroke: currentColor;
     fill: none;
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.theme-toggle:hover svg {
-    transform: rotate(20deg);
 }
 
 .status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
+    gap: 7px;
+    height: 30px;
+    padding: 0 11px;
     border-radius: 999px;
-    font-size: 0.82rem;
-    font-weight: 600;
+    font-size: 0.78rem;
+    font-weight: 500;
     background: var(--success-bg);
     color: var(--success-text);
     border: 1px solid var(--success-border);
-    transition: all 0.3s ease;
 }
 
 .status-pill.warn {
@@ -685,65 +677,100 @@ body {
 }
 
 .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: currentColor;
     animation: pulseDot 2s infinite ease-in-out;
 }
 
+/* Modern Fluent Card / Content Dialog */
 .card {
-    background: var(--bg-secondary);
+    background: var(--card-bg);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
     border: 1px solid var(--border-color);
-    border-radius: 20px;
-    padding: 24px;
+    border-radius: var(--card-radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
     box-shadow: var(--shadow-lg);
-    transition: background-color 0.35s ease, border-color 0.35s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--card-head-bg);
+}
+
+.card-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.card-body {
+    padding: 18px;
+}
+
+.card-foot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 18px;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--bg-subtle);
 }
 
 .btn {
-    min-height: 46px;
-    padding: 10px 18px;
-    border-radius: 12px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: var(--btn-radius);
     border: 1px solid transparent;
     font-family: inherit;
-    font-size: 0.88rem;
-    font-weight: 600;
+    font-size: 0.83rem;
+    font-weight: 500;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     text-decoration: none;
-    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s ease;
+    white-space: nowrap;
 }
 
 .btn:active {
-    transform: scale(0.97);
+    transform: scale(0.98);
 }
 
 .btn-primary {
     background: var(--accent);
-    color: #ffffff;
-    box-shadow: 0 4px 14px var(--accent-glow);
+    color: var(--accent-text);
 }
 
 .btn-primary:hover {
     background: var(--accent-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px var(--accent-glow);
+    box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .btn-outline {
-    background: var(--bg-secondary);
-    border-color: var(--border-color);
+    background: var(--btn-outline-bg);
+    border-color: var(--btn-outline-border);
     color: var(--text-primary);
 }
 
 .btn-outline:hover {
-    background: var(--bg-subtle);
-    border-color: var(--accent);
-    transform: translateY(-1px);
+    background: var(--bg-hover);
+    border-color: var(--border-color);
 }
 
 .btn-danger {
@@ -753,8 +780,7 @@ body {
 }
 
 .btn-danger:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
+    filter: brightness(0.95);
 }
 """
 
@@ -778,10 +804,10 @@ function updateThemeBtn(mode) {
     const icon = document.getElementById('themeIcon');
     if (!label || !icon) return;
     if (mode === 'dark') {
-        label.textContent = 'Light Mode';
+        label.textContent = 'Light';
         icon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
     } else {
-        label.textContent = 'Dark Mode';
+        label.textContent = 'Dark';
         icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
     }
 }
@@ -826,142 +852,124 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
 <style>
 """ + SHARED_CSS + """
 .container {
-    max-width: 580px;
+    max-width: 480px;
     margin: 0 auto;
-    padding: 24px 16px 56px;
+    padding: 20px 14px 44px;
 }
 .nav-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
 }
 .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 1.2rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
+    gap: 8px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 .brand-mark {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--btn-radius);
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-text);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px var(--accent-glow);
 }
 .brand-mark svg {
-    width: 18px;
-    height: 18px;
-    stroke: #fff;
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
     fill: none;
     stroke-width: 2.2;
 }
 .status-row {
-    margin-bottom: 20px;
-}
-.section-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     margin-bottom: 14px;
-}
-.section-title {
-    font-size: 1rem;
-    font-weight: 700;
-}
-.section-sub {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    margin-bottom: 16px;
 }
 .code-input {
     width: 100%;
-    height: 58px;
-    border: 1.5px solid var(--border-color);
-    border-radius: 14px;
-    font-size: 1.65rem;
-    font-weight: 800;
-    letter-spacing: 8px;
+    height: 48px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--btn-radius);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 6px;
     text-align: center;
     color: var(--text-primary);
     background: var(--bg-subtle);
     outline: none;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
+    font-family: Consolas, monospace;
 }
 .code-input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-soft);
+    box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .dropzone {
     display: block;
-    border: 2px dashed var(--border-color);
+    border: 1.5px dashed var(--border-color);
     background: var(--bg-subtle);
-    border-radius: 16px;
-    padding: 32px 18px;
+    border-radius: var(--btn-radius);
+    padding: 26px 14px;
     text-align: center;
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.18s ease;
 }
 .dropzone:hover, .dropzone.dragover {
     border-color: var(--accent);
     background: var(--accent-soft);
-    transform: translateY(-2px);
 }
 .dropzone-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
-    background: var(--accent);
-    color: #fff;
-    margin: 0 auto 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--btn-radius);
+    background: var(--accent-soft);
+    color: var(--accent);
+    margin: 0 auto 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 6px 16px var(--accent-glow);
-    animation: floatSlow 3s infinite ease-in-out;
 }
 .dropzone-icon svg {
-    width: 24px;
-    height: 24px;
-    stroke: #fff;
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
     fill: none;
-    stroke-width: 2.2;
+    stroke-width: 2;
 }
 .alert-box {
-    margin-top: 14px;
-    padding: 12px 14px;
-    border-radius: 12px;
-    font-size: 0.86rem;
-    font-weight: 600;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--btn-radius);
+    font-size: 0.82rem;
+    font-weight: 500;
     display: none;
     word-break: break-all;
-    animation: fadeUp 0.3s ease forwards;
+    animation: fadeUp 0.2s ease forwards;
 }
 .alert-ok { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); display: block; }
 .alert-err { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); display: block; }
 .prog-card {
     background: var(--bg-subtle);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 12px;
-    margin-top: 10px;
-    animation: fadeUp 0.25s ease forwards;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--btn-radius);
+    padding: 10px 12px;
+    margin-top: 8px;
+    animation: fadeUp 0.2s ease forwards;
 }
 .prog-head {
     display: flex;
     justify-content: space-between;
-    font-size: 0.84rem;
-    font-weight: 600;
-    margin-bottom: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-bottom: 5px;
 }
 .prog-track {
-    height: 7px;
+    height: 5px;
     background: var(--border-color);
     border-radius: 99px;
     overflow: hidden;
@@ -969,73 +977,79 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
 .prog-bar {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, var(--accent), #38bdf8);
+    background: var(--accent);
     border-radius: 99px;
-    transition: width 0.2s ease;
+    transition: width 0.15s ease;
 }
 .file-card {
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-subtle);
     background: var(--bg-subtle);
-    border-radius: 14px;
-    padding: 14px;
-    margin-top: 10px;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    animation: fadeUp 0.35s ease forwards;
-}
-.file-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-1px);
-}
-.file-top {
+    border-radius: var(--btn-radius);
+    padding: 10px 12px;
+    margin-top: 8px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
+    justify-content: space-between;
+    gap: 10px;
+    transition: all 0.15s ease;
+    animation: fadeUp 0.25s ease forwards;
+}
+.file-card:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-color);
+}
+.file-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
 }
 .file-badge {
-    min-width: 52px;
-    height: 38px;
-    border-radius: 10px;
+    min-width: 40px;
+    height: 28px;
+    border-radius: 4px;
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 0.75rem;
-    font-weight: 800;
+    font-size: 0.7rem;
+    font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
 }
-.file-info { flex: 1; min-width: 0; }
 .file-name {
-    font-size: 0.92rem;
-    font-weight: 600;
-    word-break: break-all;
+    font-size: 0.86rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .file-meta {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    margin-top: 2px;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    margin-top: 1px;
 }
 .file-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
 }
-.usb-list { display: flex; flex-direction: column; gap: 8px; }
+.usb-list { display: flex; flex-direction: column; gap: 6px; }
 .usb-option {
-    padding: 12px 14px;
-    border-radius: 12px;
-    border: 1.5px solid var(--border-color);
-    background: var(--bg-subtle);
+    padding: 9px 12px;
+    border-radius: var(--btn-radius);
+    border: 1px solid var(--border-color);
+    background: var(--btn-outline-bg);
     color: var(--text-primary);
     font-family: inherit;
-    font-size: 0.9rem;
-    font-weight: 600;
+    font-size: 0.84rem;
+    font-weight: 500;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
 }
 .usb-option.active {
     border-color: var(--accent);
@@ -1047,14 +1061,14 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(2, 6, 23, 0.45);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.2s ease;
     z-index: 999;
-    padding: 20px;
+    padding: 16px;
 }
 .toast-overlay.show {
     opacity: 1;
@@ -1062,29 +1076,30 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
 }
 .toast-card {
     width: 100%;
-    max-width: 340px;
-    background: var(--bg-secondary);
+    max-width: 320px;
+    background: var(--card-bg);
+    backdrop-filter: blur(24px);
     border: 1px solid var(--border-color);
-    border-radius: 24px;
-    padding: 32px 24px 24px;
+    border-radius: var(--card-radius);
+    padding: 22px 18px 16px;
     text-align: center;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-    transform: translateY(24px) scale(0.92);
-    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(10px) scale(0.96);
+    transition: transform 0.2s ease;
 }
 .toast-overlay.show .toast-card {
     transform: translateY(0) scale(1);
 }
 .toast-icon {
-    width: 72px;
-    height: 72px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    margin: 0 auto 18px;
+    margin: 0 auto 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--success-bg);
-    border: 2px solid var(--success-border);
+    border: 1px solid var(--success-border);
     color: var(--success-text);
 }
 .toast-icon.err {
@@ -1093,41 +1108,23 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     color: var(--danger-text);
 }
 .toast-icon svg {
-    width: 36px;
-    height: 36px;
+    width: 22px;
+    height: 22px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 3;
+    stroke-width: 2.5;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
-.toast-icon svg path {
-    stroke-dasharray: 48;
-    stroke-dashoffset: 48;
-}
-.toast-overlay.show .toast-icon {
-    animation: popRing 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.toast-overlay.show .toast-icon svg path {
-    animation: drawStroke 0.5s 0.25s cubic-bezier(0.65, 0, 0.35, 1) forwards;
-}
-@keyframes popRing {
-    0% { transform: scale(0.4); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-}
-@keyframes drawStroke {
-    to { stroke-dashoffset: 0; }
-}
 .toast-title {
-    font-size: 1.25rem;
-    font-weight: 800;
-    margin-bottom: 6px;
-    letter-spacing: -0.01em;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
 }
 .toast-msg {
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     color: var(--text-secondary);
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     word-break: break-word;
 }
 </style>
@@ -1153,7 +1150,7 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
         </div>
         <button type="button" class="theme-toggle" onclick="toggleTheme()">
             <svg id="themeIcon" viewBox="0 0 24 24"></svg>
-            <span id="themeLabel">Light Mode</span>
+            <span id="themeLabel">Light</span>
         </button>
     </div>
 
@@ -1162,9 +1159,9 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
             <span class="status-dot"></span>
             <span id="usbBadgeText">
                 {% if storage.usb_found %}
-                    USB Active: {{ storage.drive_label }} ({{ storage.free_space }} free)
+                    USB: {{ storage.drive_label }} ({{ storage.free_space }} free)
                 {% else %}
-                    No USB Connected (Uploads Blocked)
+                    No USB Connected
                 {% endif %}
             </span>
         </div>
@@ -1172,15 +1169,16 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
 
     {% if not authed %}
     <div class="card animate-in delay-2">
-        <div class="section-head">
-            <div class="section-title">Enter Access Code</div>
+        <div class="card-head">
+            <div class="card-title">Access Code</div>
         </div>
-        <div class="section-sub">
-            Enter the 6-digit Access Code displayed on your laptop control panel to unlock file transfers.
+        <div class="card-body">
+            <input type="tel" id="codeField" class="code-input" maxlength="6" placeholder="000000" autocomplete="off">
+            <div id="authAlert" class="alert-box"></div>
         </div>
-        <input type="tel" id="codeField" class="code-input" maxlength="6" placeholder="000000" autocomplete="off">
-        <button type="button" class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="verifyAccessCode()">Unlock Session</button>
-        <div id="authAlert" class="alert-box"></div>
+        <div class="card-foot">
+            <button type="button" class="btn btn-primary" style="width:100%;" onclick="verifyAccessCode()">Unlock</button>
+        </div>
     </div>
     <script>
     """ + THEME_SCRIPT + """
@@ -1190,7 +1188,7 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
         const code = (input.value || '').replace(/\\s+/g, '');
         if (code.length < 4) {
             alertBox.className = 'alert-box alert-err';
-            alertBox.textContent = 'Please enter a valid 6-digit access code.';
+            alertBox.textContent = 'Please enter the 6-digit access code.';
             return;
         }
         const r = await fetch('/api/verify-code', {
@@ -1203,7 +1201,7 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
             location.reload();
         } else {
             alertBox.className = 'alert-box alert-err';
-            alertBox.textContent = d.error || 'Invalid access code.';
+            alertBox.textContent = d.error || 'Invalid code.';
         }
     }
     document.getElementById('codeField').addEventListener('keyup', function(e) {
@@ -1212,46 +1210,53 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     </script>
     {% else %}
 
-    <div class="card animate-in delay-1" id="usbSelectCard" style="display:{{ 'block' if storage.usb_count > 1 else 'none' }};margin-bottom:16px;">
-        <div class="section-head">
-            <div class="section-title">Select Target USB Drive</div>
+    <div class="card animate-in delay-1" id="usbSelectCard" style="display:{{ 'block' if storage.usb_count > 1 else 'none' }};margin-bottom:14px;">
+        <div class="card-head">
+            <div class="card-title">Select USB Drive</div>
         </div>
-        <div class="section-sub">Multiple USB drives detected. Choose which drive to use:</div>
-        <div id="usbChoiceList" class="usb-list"></div>
+        <div class="card-body" style="padding:10px 14px;">
+            <div id="usbChoiceList" class="usb-list"></div>
+        </div>
     </div>
 
     {% if not storage.usb_found %}
-    <div class="card animate-in delay-2" style="margin-bottom:16px;border:1.5px solid var(--danger);background:var(--danger-soft);">
-        <div style="font-weight:700;color:var(--danger);font-size:1.05rem;margin-bottom:6px;">Uploads Blocked: No USB Flash Drive Connected</div>
-        <div style="font-size:0.86rem;color:var(--text-secondary);line-height:1.5;">
-            Files are strictly forbidden from being saved to the laptop local disk. Please plug a USB flash drive into the computer to unlock file transfers.
+    <div class="card animate-in delay-2" style="margin-bottom:14px;border-color:var(--danger-border);">
+        <div class="card-head" style="background:var(--danger-bg);border-bottom-color:var(--danger-border);">
+            <div class="card-title" style="color:var(--danger-text);">No USB Connected</div>
+        </div>
+        <div class="card-body" style="font-size:0.86rem;color:var(--text-secondary);">
+            Please plug a USB flash drive into the laptop to enable file transfers.
         </div>
     </div>
     {% else %}
-    <div class="card animate-in delay-2" style="margin-bottom:16px;">
-        <div class="section-head">
-            <div class="section-title">Upload Files Directly to USB ({{ storage.active_drive }})</div>
-            <span style="font-size:0.78rem;color:var(--text-secondary);">Max 2 GB / file</span>
+    <div class="card animate-in delay-2" style="margin-bottom:14px;">
+        <div class="card-head">
+            <div class="card-title">Upload to USB ({{ storage.active_drive }})</div>
+            <span style="font-size:0.76rem;color:var(--text-muted);">Max 2 GB</span>
         </div>
-        <label for="filePicker" class="dropzone" id="dropArea">
-            <div class="dropzone-icon">
-                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            </div>
-            <div style="font-weight:700;font-size:0.98rem;">Tap to select files or drag & drop</div>
-            <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Files are stored directly inside {{ storage.active_drive }}\\{{ storage.folder_name }}</div>
-        </label>
-        <input type="file" id="filePicker" multiple style="display:none">
-        <div id="mainAlert" class="alert-box"></div>
-        <div id="progressContainer"></div>
+        <div class="card-body">
+            <label for="filePicker" class="dropzone" id="dropArea">
+                <div class="dropzone-icon">
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div style="font-weight:600;font-size:0.92rem;">Choose files or drop here</div>
+                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px;">Target: {{ storage.active_drive }}\\{{ storage.folder_name }}</div>
+            </label>
+            <input type="file" id="filePicker" multiple style="display:none">
+            <div id="mainAlert" class="alert-box"></div>
+            <div id="progressContainer"></div>
+        </div>
     </div>
     {% endif %}
 
     <div class="card animate-in delay-3">
-        <div class="section-head">
-            <div class="section-title">Files on USB (<span id="countLabel">0</span>)</div>
-            <button type="button" class="btn btn-outline" style="min-height:36px;padding:6px 12px;font-size:0.8rem;" onclick="loadUsbFiles()">Refresh</button>
+        <div class="card-head">
+            <div class="card-title">Files on USB (<span id="countLabel">0</span>)</div>
+            <button type="button" class="btn btn-outline" style="height:28px;padding:0 10px;font-size:0.76rem;" onclick="loadUsbFiles()">Refresh</button>
         </div>
-        <div id="filesContainer" style="color:var(--text-secondary);font-size:0.88rem;">Loading files...</div>
+        <div class="card-body" style="padding:10px 14px;">
+            <div id="filesContainer" style="color:var(--text-secondary);font-size:0.84rem;">Loading...</div>
+        </div>
     </div>
 
     <script>
@@ -1482,7 +1487,7 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
             }
 
             if (!d.files.length) {
-                filesContainer.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:24px 0;">No files stored on USB yet.</div>';
+                filesContainer.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:16px 0;font-size:0.84rem;">No files on USB</div>';
                 return;
             }
 
@@ -1491,46 +1496,53 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
                 const item = document.createElement('div');
                 item.className = 'file-card';
 
-                const top = document.createElement('div');
-                top.className = 'file-top';
+                const left = document.createElement('div');
+                left.className = 'file-left';
 
                 const tag = document.createElement('div');
                 tag.className = 'file-badge';
                 tag.textContent = f.badge;
 
                 const meta = document.createElement('div');
-                meta.className = 'file-info';
+                meta.style.minWidth = '0';
+                meta.style.flex = '1';
                 const title = document.createElement('div');
                 title.className = 'file-name';
                 title.textContent = f.name;
                 const sub = document.createElement('div');
                 sub.className = 'file-meta';
-                sub.textContent = `${f.size}  |  ${f.time_str}`;
+                sub.textContent = `${f.size} | ${f.time_str}`;
                 meta.appendChild(title);
                 meta.appendChild(sub);
 
-                top.appendChild(tag);
-                top.appendChild(meta);
+                left.appendChild(tag);
+                left.appendChild(meta);
 
                 const actions = document.createElement('div');
                 actions.className = 'file-actions';
 
                 const aDl = document.createElement('a');
                 aDl.className = 'btn btn-outline';
-                aDl.style.minHeight = '40px';
+                aDl.style.height = '28px';
+                aDl.style.padding = '0 9px';
+                aDl.style.fontSize = '0.74rem';
                 aDl.href = '/download/' + f.encoded;
                 aDl.setAttribute('download', '');
                 aDl.textContent = 'Download';
 
                 const bShare = document.createElement('button');
                 bShare.className = 'btn btn-outline';
-                bShare.style.minHeight = '40px';
-                bShare.textContent = 'Copy Link';
+                bShare.style.height = '28px';
+                bShare.style.padding = '0 9px';
+                bShare.style.fontSize = '0.74rem';
+                bShare.textContent = 'Copy';
                 bShare.onclick = () => generateFileLink(f.encoded);
 
                 const bDel = document.createElement('button');
                 bDel.className = 'btn btn-danger';
-                bDel.style.minHeight = '40px';
+                bDel.style.height = '28px';
+                bDel.style.padding = '0 9px';
+                bDel.style.fontSize = '0.74rem';
                 bDel.textContent = 'Delete';
                 bDel.onclick = () => deleteUsbFile(f.name, f.encoded);
 
@@ -1538,7 +1550,7 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
                 actions.appendChild(bShare);
                 actions.appendChild(bDel);
 
-                item.appendChild(top);
+                item.appendChild(left);
                 item.appendChild(actions);
                 filesContainer.appendChild(item);
             });
@@ -1564,276 +1576,231 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
 <style>
 """ + SHARED_CSS + """
 .shell {
-    max-width: 920px;
+    max-width: 820px;
     margin: 0 auto;
-    padding: 32px 20px 56px;
+    padding: 24px 16px 48px;
 }
 .header-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 14px;
-    margin-bottom: 24px;
+    gap: 12px;
+    margin-bottom: 18px;
 }
 .brand-block {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
 }
 .brand-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--btn-radius);
     background: var(--accent);
+    color: var(--accent-text);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 6px 18px var(--accent-glow);
 }
 .brand-icon svg {
-    width: 22px;
-    height: 22px;
-    stroke: #fff;
+    width: 17px;
+    height: 17px;
+    stroke: currentColor;
     fill: none;
     stroke-width: 2.2;
 }
 .brand-text h1 {
-    font-size: 1.35rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-}
-.brand-text p {
-    font-size: 0.84rem;
-    color: var(--text-secondary);
+    font-size: 1.12rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 .header-controls {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     flex-wrap: wrap;
 }
-.usb-selector-banner {
-    background: var(--bg-secondary);
-    border: 1.5px solid var(--accent);
-    border-radius: 18px;
-    padding: 20px;
-    margin-bottom: 24px;
-    display: none;
-    box-shadow: var(--shadow-lg);
-    animation: fadeUp 0.35s ease forwards;
+.update-banner {
+    background: var(--card-bg);
+    border: 1px solid var(--accent);
+    border-radius: var(--card-radius);
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    box-shadow: 0 2px 10px var(--accent-soft);
+    animation: fadeUp 0.25s ease forwards;
+}
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+.update-badge {
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.update-text {
+    font-size: 0.84rem;
+    color: var(--text-primary);
+}
+.update-notes {
+    display: block;
+    font-size: 0.76rem;
+    color: var(--text-muted);
 }
 .usb-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 12px;
-    margin-top: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
 }
 .usb-drive-card {
-    padding: 14px 16px;
-    border-radius: 14px;
-    border: 1.5px solid var(--border-color);
-    background: var(--bg-subtle);
+    padding: 10px 12px;
+    border-radius: var(--btn-radius);
+    border: 1px solid var(--border-color);
+    background: var(--btn-outline-bg);
     color: var(--text-primary);
     font-family: inherit;
     text-align: left;
     cursor: pointer;
-    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s ease;
 }
 .usb-drive-card:hover {
-    transform: translateY(-2px);
+    background: var(--bg-hover);
     border-color: var(--accent);
 }
 .usb-drive-card.selected {
     border-color: var(--accent);
     background: var(--accent-soft);
-    box-shadow: 0 4px 16px var(--accent-glow);
+}
+.active-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--accent-text);
 }
 .grid-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    gap: 16px;
     align-items: stretch;
 }
-@media (max-width: 740px) {
+@media (max-width: 680px) {
     .grid-2 { grid-template-columns: 1fr; }
-}
-.panel-head {
-    margin-bottom: 18px;
-}
-.panel-title {
-    font-size: 1.05rem;
-    font-weight: 700;
-    margin-bottom: 4px;
-}
-.panel-sub {
-    font-size: 0.84rem;
-    color: var(--text-secondary);
 }
 .qr-stage {
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 16px;
+    padding: 12px;
     background: #ffffff;
-    border-radius: 18px;
-    border: 1px solid var(--border-color);
-    margin: 0 auto 18px;
+    border-radius: var(--btn-radius);
+    border: 1px solid var(--border-subtle);
+    margin: 0 auto;
     width: fit-content;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.qr-stage:hover {
-    transform: scale(1.02);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .qr-stage svg {
-    width: 220px;
+    width: 190px;
     height: auto;
     display: block;
 }
-.timer-bar {
+.timer-chip {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    background: var(--bg-subtle);
-    border: 1px solid var(--border-color);
-    padding: 10px 14px;
-    border-radius: 12px;
-    font-size: 0.84rem;
-    margin-bottom: 14px;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }
 .seg-switch {
     display: inline-flex;
-    background: var(--bg-primary);
-    padding: 3px;
-    border-radius: 9px;
-    border: 1px solid var(--border-color);
+    background: var(--bg-subtle);
+    padding: 2px;
+    border-radius: 5px;
+    border: 1px solid var(--border-subtle);
 }
 .seg-opt {
     border: none;
     background: transparent;
     color: var(--text-secondary);
-    padding: 4px 10px;
-    border-radius: 6px;
+    padding: 2px 7px;
+    border-radius: 3px;
     font-family: inherit;
-    font-size: 0.76rem;
-    font-weight: 700;
+    font-size: 0.72rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
 }
 .seg-opt.active {
     background: var(--accent);
-    color: #ffffff;
+    color: var(--accent-text);
 }
 .code-stage {
     background: var(--bg-subtle);
-    border: 1.5px solid var(--border-color);
-    border-radius: 16px;
-    padding: 24px 16px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--btn-radius);
+    padding: 18px 12px;
     text-align: center;
-    margin-bottom: 16px;
-    position: relative;
-    overflow: hidden;
-}
-.code-caption {
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 700;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
+    margin-bottom: 12px;
 }
 .code-value {
-    font-size: 2.5rem;
-    font-weight: 800;
-    letter-spacing: 10px;
+    font-size: 2.2rem;
+    font-weight: 700;
+    letter-spacing: 8px;
     color: var(--accent);
-    font-family: Consolas, 'SF Mono', monospace;
+    font-family: Consolas, monospace;
+    line-height: 1.1;
 }
 .info-strip {
     background: var(--bg-subtle);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 12px 14px;
-    font-size: 0.85rem;
-    margin-bottom: 16px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--btn-radius);
+    padding: 8px 12px;
+    font-size: 0.8rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 8px;
     word-break: break-all;
 }
-.stack-btns {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
 .toast-box {
-    margin-top: 12px;
-    padding: 12px 14px;
-    border-radius: 12px;
+    margin-top: 10px;
+    padding: 9px 12px;
+    border-radius: var(--btn-radius);
     background: var(--success-bg);
     border: 1px solid var(--success-border);
     color: var(--success-text);
-    font-size: 0.82rem;
-    font-weight: 600;
+    font-size: 0.8rem;
+    font-weight: 500;
     display: none;
     word-break: break-all;
-    animation: fadeUp 0.25s ease forwards;
+    animation: fadeUp 0.2s ease forwards;
 }
 .footer-strip {
-    margin-top: 24px;
-    padding: 16px 22px;
-    background: var(--bg-secondary);
+    margin-top: 18px;
+    padding: 12px 16px;
+    background: var(--card-bg);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--card-radius);
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 12px;
-    font-size: 0.84rem;
+    gap: 10px;
+    font-size: 0.8rem;
     color: var(--text-secondary);
-    box-shadow: var(--shadow-sm);
-}
-.update-banner {
-    background: var(--bg-secondary);
-    border: 1.5px solid var(--accent);
-    border-radius: 16px;
-    padding: 14px 18px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    box-shadow: 0 4px 20px var(--accent-glow);
-    animation: fadeUp 0.35s ease forwards;
-}
-.update-banner-content {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex: 1;
-}
-.update-badge {
-    padding: 4px 10px;
-    border-radius: 8px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 0.74rem;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-}
-.update-text {
-    font-size: 0.88rem;
-    color: var(--text-primary);
-}
-.update-notes {
-    display: block;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    margin-top: 2px;
 }
 </style>
 </head>
@@ -1845,8 +1812,7 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
                 <svg viewBox="0 0 24 24"><path d="M12 2v14m0-14l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
             </div>
             <div class="brand-text">
-                <h1>USB File Transfer</h1>
-                <p>Local WiFi High-Speed Phone-to-USB Bridge</p>
+                <h1>USB Transfer</h1>
             </div>
         </div>
         <div class="header-controls">
@@ -1856,7 +1822,7 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
             </div>
             <button type="button" class="theme-toggle" id="pinBtn" onclick="installShortcuts()" title="Pin to Taskbar & Desktop">
                 <svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg>
-                <span>Pin to Taskbar</span>
+                <span>Pin App</span>
             </button>
             <button type="button" class="theme-toggle" id="updateBtn" onclick="checkForUpdates(true)">
                 <svg viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
@@ -1864,86 +1830,82 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
             </button>
             <button type="button" class="theme-toggle" onclick="toggleTheme()">
                 <svg id="themeIcon" viewBox="0 0 24 24"></svg>
-                <span id="themeLabel">Light Mode</span>
+                <span id="themeLabel">Light</span>
             </button>
         </div>
     </div>
 
     <div id="updateBanner" class="update-banner" style="display:none;">
         <div class="update-banner-content">
-            <div class="update-badge">UPDATE</div>
-            <div class="update-text">
-                <strong>New Version Available:</strong> <span id="newVerTag">v1.0.1</span>
-                <span id="updateReleaseNotes" class="update-notes"></span>
-            </div>
+            <span class="update-badge">UPDATE</span>
+            <span class="update-text"><strong>New Version:</strong> <span id="newVerTag">v1.0.1</span></span>
+            <span id="updateReleaseNotes" class="update-notes"></span>
         </div>
-        <button type="button" class="btn btn-primary" id="startUpdateBtn" onclick="applyUpdate()">Update Now</button>
+        <button type="button" class="btn btn-primary" id="startUpdateBtn" onclick="applyUpdate()">Update</button>
     </div>
 
-    <div id="usbSelectorPanel" class="usb-selector-banner" style="display:block;">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-            <div>
-                <div style="font-weight:700;font-size:1.02rem;" id="usbSelectorTitle">Connected USB Flash Drives</div>
-                <div style="font-size:0.83rem;color:var(--text-secondary);margin-top:2px;" id="usbSelectorSub">
-                    Files from mobile phone are saved strictly to USB storage. Local disk storage is disabled.
-                </div>
-            </div>
-            <button type="button" class="btn btn-outline" style="min-height:36px;padding:6px 14px;font-size:0.82rem;" onclick="refreshState(false, false)">Refresh USB</button>
+    <div id="usbSelectorPanel" class="card animate-in delay-1" style="display:block;margin-bottom:16px;">
+        <div class="card-head">
+            <div class="card-title" id="usbSelectorTitle">Target USB Drive</div>
+            <button type="button" class="btn btn-outline" style="height:26px;padding:0 9px;font-size:0.74rem;" onclick="refreshState(false, false)">Refresh</button>
         </div>
-        <div id="usbGrid" class="usb-grid"></div>
+        <div class="card-body" style="padding:12px 16px;">
+            <div id="usbSelectorSub" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;display:none;"></div>
+            <div id="usbGrid" class="usb-grid"></div>
+        </div>
     </div>
 
     <div class="grid-2">
-        <!-- Left Card: QR Scanner -->
-        <div class="card animate-in delay-1" style="display:flex;flex-direction:column;justify-content:space-between;">
+        <!-- Left: QR Code Content Dialog Card -->
+        <div class="card animate-in delay-2" style="display:flex;flex-direction:column;justify-content:space-between;">
             <div>
-                <div class="panel-head">
-                    <div class="panel-title">1. Scan QR Code</div>
-                    <div class="panel-sub">Connect your phone to the same WiFi network and scan with your camera</div>
-                </div>
-                <div class="qr-stage" id="qrContainer">{{ qr_svg | safe }}</div>
-            </div>
-            <div>
-                <div class="timer-bar">
-                    <span>Auto-refresh in <strong id="timerText" style="color:var(--text-primary);">05:00</strong></span>
-                    <div class="seg-switch">
-                        <button type="button" id="btn5m" class="seg-opt active" onclick="changeInterval(5)">5 Min</button>
-                        <button type="button" id="btn10m" class="seg-opt" onclick="changeInterval(10)">10 Min</button>
+                <div class="card-head">
+                    <div class="card-title">QR Code</div>
+                    <div class="timer-chip">
+                        <span id="timerText" style="font-family:Consolas,monospace;font-weight:600;">05:00</span>
+                        <div class="seg-switch">
+                            <button type="button" id="btn5m" class="seg-opt active" onclick="changeInterval(5)">5m</button>
+                            <button type="button" id="btn10m" class="seg-opt" onclick="changeInterval(10)">10m</button>
+                        </div>
                     </div>
                 </div>
-                <button type="button" class="btn btn-outline" style="width:100%;" onclick="refreshState(true, false)">Regenerate QR Code Now</button>
+                <div class="card-body" style="text-align:center;">
+                    <div class="qr-stage" id="qrContainer">{{ qr_svg | safe }}</div>
+                </div>
+            </div>
+            <div class="card-foot">
+                <button type="button" class="btn btn-outline" style="width:100%;" onclick="refreshState(true, false)">Regenerate QR Code</button>
             </div>
         </div>
 
-        <!-- Right Card: Access Code & Direct Link Generator -->
-        <div class="card animate-in delay-2" style="display:flex;flex-direction:column;justify-content:space-between;">
+        <!-- Right: Access Code Content Dialog Card -->
+        <div class="card animate-in delay-3" style="display:flex;flex-direction:column;justify-content:space-between;">
             <div>
-                <div class="panel-head">
-                    <div class="panel-title">2. Access Code & Share Link</div>
-                    <div class="panel-sub">Enter this 6-digit code on your phone after scanning, or generate a direct link</div>
+                <div class="card-head">
+                    <div class="card-title">Access Code</div>
+                    <span style="font-size:0.76rem;color:var(--text-muted);">Security PIN</span>
                 </div>
-
-                <div class="code-stage">
-                    <div class="code-caption">Security Access Code</div>
-                    <div class="code-value" id="accessCodeText">{{ access_code }}</div>
-                </div>
-
-                <div class="info-strip">
-                    <span>Server URL: <strong id="baseUrlText" style="color:var(--text-primary);">{{ target_url }}</strong></span>
+                <div class="card-body">
+                    <div class="code-stage">
+                        <div class="code-value" id="accessCodeText">{{ access_code }}</div>
+                    </div>
+                    <div class="info-strip">
+                        <span style="color:var(--text-muted);">Server URL:</span>
+                        <strong id="baseUrlText" style="color:var(--text-primary);font-family:Consolas,monospace;">{{ target_url }}</strong>
+                    </div>
+                    <div id="shareOutput" class="toast-box"></div>
                 </div>
             </div>
-
-            <div class="stack-btns">
-                <button type="button" class="btn btn-primary" onclick="refreshState(false, true)">Generate New Access Code</button>
-                <button type="button" class="btn btn-outline" onclick="createDirectLink()">Generate & Copy Direct Link (30m)</button>
-                <div id="shareOutput" class="toast-box"></div>
+            <div class="card-foot">
+                <button type="button" class="btn btn-outline" onclick="refreshState(false, true)">New Code</button>
+                <button type="button" class="btn btn-primary" onclick="createDirectLink()">Copy Direct Link</button>
             </div>
         </div>
     </div>
 
     <div class="footer-strip animate-in delay-3">
-        <div>Active Storage Folder: <strong id="savePathText" style="color:var(--text-primary);">{{ storage.upload_dir }}</strong></div>
-        <a href="/" target="_blank" style="color:var(--accent);font-weight:700;text-decoration:none;">Open Web Uploader on Laptop</a>
+        <div>Folder: <strong id="savePathText" style="color:var(--text-primary);">{{ storage.upload_dir }}</strong></div>
+        <a href="/" target="_blank" style="color:var(--accent);font-weight:500;text-decoration:none;">Open Web Uploader</a>
     </div>
 </div>
 
@@ -2052,11 +2014,11 @@ async function refreshState(forceQr, forceCode) {
                     btn.className = 'usb-drive-card' + (active ? ' selected' : '');
                     btn.innerHTML = `
                         <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-weight:700;font-size:0.95rem;">${u.display}</span>
-                            ${active ? '<span style="font-size:0.72rem;background:var(--accent);color:#fff;padding:2px 7px;border-radius:6px;font-weight:700;">ACTIVE</span>' : ''}
+                            <span style="font-weight:600;font-size:0.88rem;">${u.display}</span>
+                            ${active ? '<span class="active-badge">Active</span>' : ''}
                         </div>
-                        <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">
-                            Free: <strong>${u.free_space}</strong> / Total: ${u.total_space}
+                        <div style="font-size:0.76rem;color:var(--text-muted);margin-top:3px;">
+                            ${u.free_space} free of ${u.total_space}
                         </div>
                     `;
                     btn.onclick = () => selectUsbDrive(u.drive);
@@ -2065,14 +2027,14 @@ async function refreshState(forceQr, forceCode) {
             }
         } else {
             pill.className = 'status-pill warn';
-            pillText.textContent = 'No USB Detected (Uploads Blocked)';
+            pillText.textContent = 'No USB Connected';
             if (selPanel) selPanel.style.display = 'block';
-            if (selTitle) selTitle.textContent = 'No USB Flash Drive Connected';
-            if (selSub) selSub.textContent = 'Saving to laptop local disk is strictly prohibited. Please plug in a USB flash drive.';
+            if (selTitle) selTitle.textContent = 'Target USB Drive';
+            if (selSub) selSub.textContent = '';
             if (grid) {
                 grid.innerHTML = `
-                    <div style="grid-column:1/-1;padding:16px 20px;background:var(--danger-soft);border:1.5px solid var(--danger);border-radius:12px;color:var(--danger);font-weight:600;font-size:0.9rem;">
-                        No USB flash drive detected. Please plug a USB flash drive into your laptop. Mobile phone upload is strictly disabled until a USB drive is plugged in.
+                    <div style="grid-column:1/-1;padding:12px 14px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:var(--btn-radius);color:var(--danger-text);font-size:0.82rem;">
+                        No USB drive connected. Please plug in a USB flash drive.
                     </div>
                 `;
             }
