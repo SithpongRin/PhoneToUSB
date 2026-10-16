@@ -77,7 +77,7 @@ UPLOAD_FOLDER_NAME = "PhoneToUSB"
 DRIVE_REMOVABLE = 2
 
 # Application Version and GitHub Repository for In-App Updates
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.1.0"
 GITHUB_REPO = "SithpongRin/PhoneToUSB"
 
 if getattr(sys, "frozen", False):
@@ -97,6 +97,8 @@ SELECTED_USB_DRIVE = USB_DRIVE
 # QR rotation interval: default 5 minutes (300s), switchable to 10 minutes (600s)
 ROTATE_INTERVAL_SECONDS = 300
 CURRENT_QR_ID = secrets.token_hex(4)
+PREVIOUS_QR_ID = None
+PREVIOUS_QR_EXPIRE = 0.0
 LAST_ROTATE_TIME = time.time()
 
 # 6-digit Access Code required to unlock transfer session
@@ -119,11 +121,13 @@ _CACHED_QR_SVG = ""
 # ==============================================================================
 
 def check_and_rotate_state(force_qr=False, force_code=False):
-    global CURRENT_QR_ID, ACCESS_CODE, LAST_ROTATE_TIME
+    global CURRENT_QR_ID, PREVIOUS_QR_ID, PREVIOUS_QR_EXPIRE, ACCESS_CODE, LAST_ROTATE_TIME
     now = time.time()
     with STATE_LOCK:
         elapsed = now - LAST_ROTATE_TIME
         if force_qr or elapsed >= ROTATE_INTERVAL_SECONDS:
+            PREVIOUS_QR_ID = CURRENT_QR_ID
+            PREVIOUS_QR_EXPIRE = now + 60
             CURRENT_QR_ID = secrets.token_hex(4)
             LAST_ROTATE_TIME = now
             elapsed = 0
@@ -132,6 +136,8 @@ def check_and_rotate_state(force_qr=False, force_code=False):
         remaining = max(1, int(ROTATE_INTERVAL_SECONDS - elapsed))
         return {
             "qr_id": CURRENT_QR_ID,
+            "previous_qr_id": PREVIOUS_QR_ID,
+            "previous_qr_expire": PREVIOUS_QR_EXPIRE,
             "access_code": ACCESS_CODE,
             "remaining": remaining,
             "interval_sec": ROTATE_INTERVAL_SECONDS,
@@ -2879,6 +2885,17 @@ def api_ping():
 
 @app.route("/", methods=["GET"])
 def home_page():
+    q_param = request.args.get("q", "").strip()
+    if q_param:
+        now = time.time()
+        state = check_and_rotate_state()
+        is_valid_qr = (q_param == state.get("qr_id")) or (
+            q_param == state.get("previous_qr_id") and now < state.get("previous_qr_expire", 0)
+        )
+        if is_valid_qr:
+            session["verified_code"] = state["access_code"]
+            return redirect(url_for("home_page"))
+
     link_token = request.args.get("link", "").strip()
     if link_token and verify_share_link_token(link_token):
         session["link_verified"] = True

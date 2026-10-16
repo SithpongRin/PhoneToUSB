@@ -32,7 +32,7 @@ jobs:
 
       - name: Build Standalone Executable
         run: |
-          pyinstaller --noconfirm --onefile --noconsole --clean --noupx --icon "app_icon.ico" --version-file "version_info.txt" --name "USB_Transfer" app.py
+          pyinstaller --noconfirm --onefile --noconsole --clean --noupx --icon "app_icon.ico" --name "USB_Transfer" app.py
 
       - name: Determine Version Tag
         id: get_version
