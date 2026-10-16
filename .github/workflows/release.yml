@@ -36,15 +36,8 @@ jobs:
 
       - name: Determine Version Tag
         id: get_version
-        shell: bash
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            APP_VER=$(python -c "import re; m = re.search(r'APP_VERSION\s*=\s*[\"\\\']([^\"\\\']+)[\"\\\']', open('app.py', encoding='utf-8').read()); print(m.group(1) if m else '1.0.1')")
-            VERSION="v${APP_VER}"
-          fi
-          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+          python -c "import os, re; content = open('app.py', encoding='utf-8').read(); m = re.search(r'APP_VERSION\s*=\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]', content); tag = 'v' + (m.group(1) if m else '1.0.1'); open(os.environ['GITHUB_OUTPUT'], 'a').write(f'tag={tag}\n'); print('Determined release tag:', tag)"
 
       - name: Create GitHub Release and Upload Binary
         uses: softprops/action-gh-release@v2

@@ -332,6 +332,7 @@ def resolve_storage(force_refresh=False):
     if not usbs:
         return {
             "upload_dir": "",
+            "folder_name": UPLOAD_FOLDER_NAME,
             "usb_found": False,
             "need_selection": False,
             "usb_count": 0,
@@ -358,6 +359,7 @@ def resolve_storage(force_refresh=False):
 
     return {
         "upload_dir": target_dir,
+        "folder_name": UPLOAD_FOLDER_NAME,
         "usb_found": True,
         "need_selection": False,
         "usb_count": len(usbs),
@@ -481,8 +483,24 @@ def make_svg_qr(url_str):
     return svg_text
 
 
+def is_local_request():
+    ip = request.remote_addr
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+    try:
+        if ip:
+            if ip == get_laptop_ip():
+                return True
+            local_ips = socket.gethostbyname_ex(socket.gethostname())[2]
+            if ip in local_ips:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def is_session_authenticated():
-    if request.remote_addr in ("127.0.0.1", "::1"):
+    if is_local_request():
         return True
     with STATE_LOCK:
         current_code = ACCESS_CODE
@@ -1220,7 +1238,7 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
                 <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             <div style="font-weight:700;font-size:0.98rem;">Tap to select files or drag & drop</div>
-            <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Files are stored directly inside {{ storage.active_drive }}\\{{ storage.upload_dir.split('\\')[-1] }}</div>
+            <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Files are stored directly inside {{ storage.active_drive }}\\{{ storage.folder_name }}</div>
         </label>
         <input type="file" id="filePicker" multiple style="display:none">
         <div id="mainAlert" class="alert-box"></div>
@@ -1958,20 +1976,33 @@ async function changeInterval(mins) {
 }
 
 async function createDirectLink() {
-    const r = await fetch('/api/generate-link', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({minutes: 30})
-    });
-    const d = await r.json();
-    if (r.ok && d.ok) {
-        const out = document.getElementById('shareOutput');
-        out.style.display = 'block';
-        out.textContent = 'Direct Link Copied (Valid 30m): ' + d.url;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(d.url);
+    try {
+        const r = await fetch('/api/generate-link', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({minutes: 30})
+        });
+        const d = await r.json();
+        if (r.ok && d.ok) {
+            const out = document.getElementById('shareOutput');
+            out.style.display = 'block';
+            out.textContent = 'Direct Link: ' + d.url;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(d.url);
+                    out.textContent = 'Direct Link Copied to Clipboard: ' + d.url;
+                } else {
+                    const temp = document.createElement('textarea');
+                    temp.value = d.url;
+                    document.body.appendChild(temp);
+                    temp.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(temp);
+                    out.textContent = 'Direct Link Copied to Clipboard: ' + d.url;
+                }
+            } catch (err) {}
         }
-    }
+    } catch(e) {}
 }
 
 async function refreshState(forceQr, forceCode) {
@@ -2113,12 +2144,19 @@ async function applyUpdate() {
             btn.textContent = 'Update Now';
         }
     }
+}
+
 async function installShortcuts() {
     try {
         const r = await fetch('/api/create-shortcuts', {method: 'POST'});
         const d = await r.json();
         if (d.ok) {
-            alert("Shortcuts created on Desktop and Windows Start Menu!\n\nTo pin to Taskbar:\n1. Open Windows Start Menu\n2. Search 'USB File Transfer'\n3. Right-click and choose 'Pin to taskbar'.");
+            alert(`Shortcuts created on Desktop and Windows Start Menu!
+
+To pin to Taskbar:
+1. Open Windows Start Menu
+2. Search 'USB File Transfer'
+3. Right-click and choose 'Pin to taskbar'.`);
         } else {
             alert("Could not create shortcuts automatically.");
         }
@@ -2186,10 +2224,10 @@ def api_verify_code():
 
 @app.route("/qr", methods=["GET"])
 def laptop_qr_view():
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if not is_local_request():
         return (
             "<h3 style='font-family:sans-serif;color:#dc2626;text-align:center;margin-top:40px;'>"
-            "Access Denied: The /qr control center can only be viewed directly on the host laptop (127.0.0.1).</h3>"
+            "Access Denied: The /qr control center can only be viewed directly on the host laptop.</h3>"
         ), 403
 
     state = check_and_rotate_state()
@@ -2210,7 +2248,7 @@ def laptop_qr_view():
 
 @app.route("/api/check-update", methods=["GET"])
 def api_check_update():
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if not is_local_request():
         return jsonify({"ok": False}), 403
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -2252,7 +2290,7 @@ def api_check_update():
 
 @app.route("/api/apply-update", methods=["POST"])
 def api_apply_update():
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if not is_local_request():
         return jsonify({"ok": False}), 403
     body = request.get_json(silent=True) or {}
     download_url = body.get("download_url", "").strip()
@@ -2301,7 +2339,7 @@ del "%~f0"
 
 @app.route("/api/qr-state", methods=["GET"])
 def api_qr_state():
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if not is_local_request():
         return jsonify({"ok": False}), 403
     force_qr = request.args.get("force_qr") == "1"
     force_code = request.args.get("force_code") == "1"
@@ -2324,7 +2362,7 @@ def api_qr_state():
 
 @app.route("/api/set-interval", methods=["POST"])
 def api_set_interval():
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if not is_local_request():
         return jsonify({"ok": False}), 403
     body = request.get_json(silent=True) or {}
     mins = int(body.get("minutes", 5))
@@ -2352,8 +2390,9 @@ def api_generate_link():
 
 
 @app.route("/api/select-usb", methods=["POST"])
-@require_auth
 def api_select_usb():
+    if not is_local_request() and not is_session_authenticated():
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
     global SELECTED_USB_DRIVE
     body = request.get_json(silent=True) or {}
     drv = str(body.get("drive", "")).strip().upper()
@@ -2371,7 +2410,7 @@ def api_select_usb():
 
 @app.route("/api/create-shortcuts", methods=["POST"])
 def api_create_shortcuts():
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if not is_local_request():
         return jsonify({"ok": False}), 403
     ok = create_desktop_and_start_menu_shortcuts()
     return jsonify({"ok": ok})
