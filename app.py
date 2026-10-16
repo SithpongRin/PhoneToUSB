@@ -613,6 +613,22 @@ body {
     50% { transform: scale(1.3); opacity: 0.6; }
 }
 
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.version-chip {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+    font-family: Consolas, monospace;
+}
+
 .animate-in {
     animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -1811,8 +1827,9 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
             <div class="brand-icon">
                 <svg viewBox="0 0 24 24"><path d="M12 2v14m0-14l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
             </div>
-            <div class="brand-text">
+            <div class="brand-text" style="display:flex;align-items:center;gap:8px;">
                 <h1>USB Transfer</h1>
+                <span class="version-chip">v{{ current_version }}</span>
             </div>
         </div>
         <div class="header-controls">
@@ -1824,9 +1841,9 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
                 <svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg>
                 <span>Pin App</span>
             </button>
-            <button type="button" class="theme-toggle" id="updateBtn" onclick="checkForUpdates(true)">
-                <svg viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                <span id="updateBtnText">v{{ current_version }}</span>
+            <button type="button" class="theme-toggle" id="updateBtn" onclick="checkForUpdates(true)" title="Check for Updates">
+                <svg id="updateIcon" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span id="updateBtnText">Check Update</span>
             </button>
             <button type="button" class="theme-toggle" onclick="toggleTheme()">
                 <svg id="themeIcon" viewBox="0 0 24 24"></svg>
@@ -1837,11 +1854,16 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
 
     <div id="updateBanner" class="update-banner" style="display:none;">
         <div class="update-banner-content">
-            <span class="update-badge">UPDATE</span>
-            <span class="update-text"><strong>New Version:</strong> <span id="newVerTag">v1.0.1</span></span>
-            <span id="updateReleaseNotes" class="update-notes"></span>
+            <span id="updateBadge" class="update-badge">UPDATE</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+                <span id="updateBannerMsg" class="update-text"><strong>New Version:</strong> <span id="newVerTag">v1.0.1</span></span>
+                <span id="updateReleaseNotes" class="update-notes"></span>
+            </div>
         </div>
-        <button type="button" class="btn btn-primary" id="startUpdateBtn" onclick="applyUpdate()">Update</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <button type="button" class="btn btn-outline" style="height:28px;padding:0 10px;font-size:0.75rem;" onclick="dismissUpdateBanner()">Close</button>
+            <button type="button" class="btn btn-primary" id="startUpdateBtn" style="height:28px;padding:0 12px;font-size:0.75rem;display:none;" onclick="applyUpdate()">Update Now</button>
+        </div>
     </div>
 
     <div id="usbSelectorPanel" class="card animate-in delay-1" style="display:block;margin-bottom:16px;">
@@ -2044,32 +2066,91 @@ async function refreshState(forceQr, forceCode) {
 
 let updateDownloadUrl = "";
 
+function dismissUpdateBanner() {
+    const banner = document.getElementById('updateBanner');
+    if (banner) banner.style.display = 'none';
+}
+
 async function checkForUpdates(manual = false) {
     const btnText = document.getElementById('updateBtnText');
-    if (manual && btnText) btnText.textContent = 'Checking...';
+    const icon = document.getElementById('updateIcon');
+    if (manual && btnText) {
+        btnText.textContent = 'Checking...';
+        if (icon) icon.style.animation = 'spin 0.8s linear infinite';
+    }
     try {
         const r = await fetch('/api/check-update');
         const d = await r.json();
+        if (icon) icon.style.animation = 'none';
         if (r.ok && d.ok) {
-            if (btnText) btnText.textContent = 'v' + d.current_version;
+            const banner = document.getElementById('updateBanner');
+            const badge = document.getElementById('updateBadge');
+            const msg = document.getElementById('updateBannerMsg');
+            const notes = document.getElementById('updateReleaseNotes');
+            const startBtn = document.getElementById('startUpdateBtn');
+
             if (d.has_update) {
                 updateDownloadUrl = d.download_url;
-                const newVerTag = document.getElementById('newVerTag');
-                if (newVerTag) newVerTag.textContent = d.latest_version;
-                const notes = document.getElementById('updateReleaseNotes');
+                if (badge) {
+                    badge.textContent = 'NEW';
+                    badge.style.background = 'var(--accent)';
+                }
+                if (msg) msg.innerHTML = `<strong>Update Available:</strong> ${d.latest_version} (${d.asset_size_str})`;
                 if (notes && d.release_notes) notes.textContent = d.release_notes;
-                const banner = document.getElementById('updateBanner');
+                if (startBtn) startBtn.style.display = 'inline-flex';
                 if (banner) banner.style.display = 'flex';
-                if (btnText) btnText.textContent = 'Update to ' + d.latest_version;
+                if (btnText) btnText.textContent = 'Update Available';
             } else if (manual) {
-                alert('You are running the latest version (' + d.current_version + ').');
+                if (badge) {
+                    badge.textContent = 'LATEST';
+                    badge.style.background = 'var(--success-text)';
+                }
+                if (msg) msg.innerHTML = `<strong>Up to Date:</strong> You are running the latest version (v${d.current_version}).`;
+                if (notes) notes.textContent = '';
+                if (startBtn) startBtn.style.display = 'none';
+                if (banner) banner.style.display = 'flex';
+                if (btnText) btnText.textContent = 'Up to Date';
+                setTimeout(() => {
+                    if (btnText) btnText.textContent = 'Check Update';
+                }, 3000);
+            } else {
+                if (btnText) btnText.textContent = 'Check Update';
             }
         } else if (manual) {
-            if (btnText) btnText.textContent = 'v{{ current_version }}';
-            alert('Could not check for updates. Please check your internet connection.');
+            if (icon) icon.style.animation = 'none';
+            if (btnText) btnText.textContent = 'Check Update';
+            const banner = document.getElementById('updateBanner');
+            const badge = document.getElementById('updateBadge');
+            const msg = document.getElementById('updateBannerMsg');
+            const notes = document.getElementById('updateReleaseNotes');
+            const startBtn = document.getElementById('startUpdateBtn');
+            if (badge) {
+                badge.textContent = 'OFFLINE';
+                badge.style.background = 'var(--danger-text)';
+            }
+            if (msg) msg.innerHTML = `Could not reach GitHub update service.`;
+            if (notes) notes.textContent = 'Please check your internet connection.';
+            if (startBtn) startBtn.style.display = 'none';
+            if (banner) banner.style.display = 'flex';
         }
     } catch (e) {
-        if (manual) alert('Error connecting to update service.');
+        if (icon) icon.style.animation = 'none';
+        if (btnText) btnText.textContent = 'Check Update';
+        if (manual) {
+            const banner = document.getElementById('updateBanner');
+            const badge = document.getElementById('updateBadge');
+            const msg = document.getElementById('updateBannerMsg');
+            const notes = document.getElementById('updateReleaseNotes');
+            const startBtn = document.getElementById('startUpdateBtn');
+            if (badge) {
+                badge.textContent = 'ERROR';
+                badge.style.background = 'var(--danger-text)';
+            }
+            if (msg) msg.innerHTML = `Connection error.`;
+            if (notes) notes.textContent = '';
+            if (startBtn) startBtn.style.display = 'none';
+            if (banner) banner.style.display = 'flex';
+        }
     }
 }
 
