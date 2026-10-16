@@ -372,24 +372,37 @@ def resolve_storage(force_refresh=False):
     }
 
 
-def get_laptop_ip():
-    global _CACHED_IP, _CACHED_IP_TIME
-    now = time.time()
-    if _CACHED_IP and (now - _CACHED_IP_TIME < 5.0):
-        return _CACHED_IP
+SELECTED_IP = None
+
+def get_all_laptop_ips():
+    ips = []
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.255.255.255", 1))
-            ip = s.getsockname()[0]
-            if ip and not ip.startswith("127."):
-                _CACHED_IP = ip
-                _CACHED_IP_TIME = now
-                return ip
+            primary = s.getsockname()[0]
+            if primary and not primary.startswith("127."):
+                ips.append(primary)
     except OSError:
         pass
-    _CACHED_IP = "127.0.0.1"
-    _CACHED_IP_TIME = now
-    return "127.0.0.1"
+    try:
+        host = socket.gethostname()
+        for ip in socket.gethostbyname_ex(host)[2]:
+            if not ip.startswith("127.") and not ip.startswith("169.254.") and ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+    if not ips:
+        ips.append("127.0.0.1")
+    return ips
+
+
+def get_laptop_ip():
+    global SELECTED_IP
+    all_ips = get_all_laptop_ips()
+    with STATE_LOCK:
+        if SELECTED_IP and SELECTED_IP in all_ips:
+            return SELECTED_IP
+    return all_ips[0]
 
 
 def clean_filename(raw_name):
@@ -1915,6 +1928,7 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
                         <span style="color:var(--text-muted);">Server URL:</span>
                         <strong id="baseUrlText" style="color:var(--text-primary);font-family:Consolas,monospace;">{{ target_url }}</strong>
                     </div>
+                    <div id="ipSwitchRow" style="display:none;margin-top:8px;"></div>
                     <div id="shareOutput" class="toast-box"></div>
                 </div>
             </div>
@@ -2060,6 +2074,33 @@ async function refreshState(forceQr, forceCode) {
                     </div>
                 `;
             }
+        }
+
+        const ipRow = document.getElementById('ipSwitchRow');
+        if (ipRow && d.all_ips && d.all_ips.length > 1) {
+            ipRow.style.display = 'flex';
+            ipRow.style.gap = '6px';
+            ipRow.style.alignItems = 'center';
+            ipRow.style.flexWrap = 'wrap';
+            ipRow.innerHTML = '<span style="font-size:0.75rem;color:var(--text-muted);">Network:</span>' + d.all_ips.map(ip => {
+                const active = (ip === d.active_ip);
+                const tag = ip.startsWith('192.168.137.') ? 'Hotspot' : 'Wi-Fi';
+                return `<button type="button" class="seg-opt${active ? ' active' : ''}" style="height:24px;font-size:0.72rem;padding:0 8px;" onclick="selectIp('${ip}')">${ip} (${tag})</button>`;
+            }).join('');
+        }
+    } catch (e) {}
+}
+
+async function selectIp(ip) {
+    try {
+        const r = await fetch('/api/select-ip', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip})
+        });
+        const d = await r.json();
+        if (d.ok) {
+            refreshState(true, false);
         }
     } catch (e) {}
 }
@@ -2391,6 +2432,7 @@ def api_qr_state():
     force_qr = request.args.get("force_qr") == "1"
     force_code = request.args.get("force_code") == "1"
     state = check_and_rotate_state(force_qr=force_qr, force_code=force_code)
+    all_ips = get_all_laptop_ips()
     ip_val = get_laptop_ip()
     qr_url = f"http://{ip_val}:{ACTIVE_PORT}/?q={state['qr_id']}"
     display_url = f"http://{ip_val}:{ACTIVE_PORT}"
@@ -2403,8 +2445,27 @@ def api_qr_state():
         "remaining": state["remaining"],
         "interval_sec": state["interval_sec"],
         "target_url": display_url,
+        "active_ip": ip_val,
+        "all_ips": all_ips,
         "storage": st,
     })
+
+
+@app.route("/api/select-ip", methods=["POST"])
+def api_select_ip():
+    if not is_local_request():
+        return jsonify({"ok": False}), 403
+    global SELECTED_IP, _CACHED_QR_KEY, _CACHED_QR_SVG
+    body = request.get_json(silent=True) or {}
+    chosen = body.get("ip", "").strip()
+    all_ips = get_all_laptop_ips()
+    if chosen in all_ips:
+        with STATE_LOCK:
+            SELECTED_IP = chosen
+            _CACHED_QR_KEY = None
+            _CACHED_QR_SVG = None
+        return jsonify({"ok": True, "ip": chosen})
+    return jsonify({"ok": False, "error": "Invalid IP."}), 400
 
 
 @app.route("/api/set-interval", methods=["POST"])
