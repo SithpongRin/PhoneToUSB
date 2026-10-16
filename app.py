@@ -1356,27 +1356,36 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
 }
 .preview-modal-backdrop {
     position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    z-index: 10000;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 999999;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 14px;
+    padding: 12px;
+    box-sizing: border-box;
 }
 .preview-modal-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--card-radius);
     width: 100%;
-    max-width: 600px;
+    max-width: 520px;
     max-height: 90vh;
+    max-height: 90dvh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
     overflow: hidden;
+    margin: auto;
 }
 .preview-modal-head {
     display: flex;
@@ -1385,6 +1394,7 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-subtle);
     gap: 12px;
+    flex-shrink: 0;
 }
 .preview-modal-title {
     font-size: 0.95rem;
@@ -1400,14 +1410,16 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     margin-top: 1px;
 }
 .preview-modal-body {
-    padding: 14px 16px;
+    padding: 12px;
     overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 200px;
-    max-height: calc(85vh - 120px);
+    min-height: 120px;
+    max-height: calc(88dvh - 120px);
     background: var(--bg-subtle);
+    flex: 1 1 auto;
 }
 .preview-modal-foot {
     display: flex;
@@ -1416,19 +1428,26 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     gap: 8px;
     padding: 10px 16px;
     border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
 }
 .preview-img {
     max-width: 100%;
-    max-height: 65vh;
+    max-height: calc(82dvh - 120px);
+    height: auto;
+    width: auto;
     object-fit: contain;
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    display: block;
+    margin: 0 auto;
 }
 .preview-video {
     max-width: 100%;
-    max-height: 65vh;
+    max-height: calc(82dvh - 120px);
     border-radius: 6px;
     outline: none;
+    display: block;
+    margin: 0 auto;
 }
 .preview-audio {
     width: 100%;
@@ -1554,6 +1573,28 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
         <button type="button" class="btn btn-primary" style="width:100%;" onclick="hideToast()">Done</button>
     </div>
 </div>
+
+<!-- Media and File Preview Dialog (Root level for proper viewport centering) -->
+<div id="previewModal" class="preview-modal-backdrop" style="display:none;" onclick="handleModalBackdropClick(event)">
+    <div class="preview-modal-card animate-in">
+        <div class="preview-modal-head">
+            <div style="min-width:0;flex:1;">
+                <div id="previewTitle" class="preview-modal-title">File Preview</div>
+                <div id="previewSub" class="preview-modal-sub">Details</div>
+            </div>
+            <button type="button" class="btn btn-outline" style="width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:50%;" onclick="closePreview()">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+        <div id="previewBody" class="preview-modal-body"></div>
+        <div class="preview-modal-foot">
+            <a id="previewDownloadBtn" class="btn btn-primary" href="#" download>Download</a>
+            <button type="button" class="btn btn-outline" onclick="copyCurrentPreviewLink()">Copy Link</button>
+            <button type="button" class="btn btn-outline" onclick="closePreview()">Close</button>
+        </div>
+    </div>
+</div>
+
 <div class="container">
     <div class="nav-bar animate-in">
         <div class="brand">
@@ -1670,26 +1711,6 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="card-body" style="padding:10px 14px;">
             <div id="filesContainer" style="color:var(--text-secondary);font-size:0.84rem;">Loading...</div>
-    </div>
-
-    <!-- Media and File Preview Dialog -->
-    <div id="previewModal" class="preview-modal-backdrop" style="display:none;" onclick="handleModalBackdropClick(event)">
-        <div class="preview-modal-card animate-in">
-            <div class="preview-modal-head">
-                <div style="min-width:0;flex:1;">
-                    <div id="previewTitle" class="preview-modal-title">File Preview</div>
-                    <div id="previewSub" class="preview-modal-sub">Details</div>
-                </div>
-                <button type="button" class="btn btn-outline" style="width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:50%;" onclick="closePreview()">
-                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-            </div>
-            <div id="previewBody" class="preview-modal-body"></div>
-            <div class="preview-modal-foot">
-                <a id="previewDownloadBtn" class="btn btn-primary" href="#" download>Download</a>
-                <button type="button" class="btn btn-outline" onclick="copyCurrentPreviewLink()">Copy Link</button>
-                <button type="button" class="btn btn-outline" onclick="closePreview()">Close</button>
-            </div>
         </div>
     </div>
 
