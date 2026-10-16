@@ -1,67 +1,58 @@
-name: Official Production Release
+name: Build and Release USB Transfer
 
 on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  publish-release-assets:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+  build-and-release:
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Verify Release Assets
-        run: |
-          ls -lh dist/
-          test -f dist/PhoneToUSB.apk || { echo "Missing dist/PhoneToUSB.apk"; exit 1; }
-          test -f dist/PhoneToUSB.exe || { echo "Missing dist/PhoneToUSB.exe"; exit 1; }
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
 
-      - name: Generate Release Manifest
+      - name: Install Dependencies
         run: |
-          APK_HASH=$(awk '{print $1}' dist/PhoneToUSB.apk.sha256)
-          EXE_HASH=$(awk '{print $1}' dist/PhoneToUSB.exe.sha256)
-          echo "APK_HASH=$APK_HASH" >> $GITHUB_ENV
-          echo "EXE_HASH=$EXE_HASH" >> $GITHUB_ENV
-          cat <<EOF > release-manifest.json
-          {
-            "version": "${{ github.ref_name }}",
-            "release_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "android": {
-              "filename": "PhoneToUSB.apk",
-              "sha256": "$APK_HASH"
-            },
-            "windows": {
-              "filename": "PhoneToUSB.exe",
-              "sha256": "$EXE_HASH"
-            }
-          }
-          EOF
+          python -m pip install --upgrade pip
+          python -m pip install flask segno pyinstaller
 
-      - name: Publish to GitHub Releases
+      - name: Build Standalone Executable
+        run: |
+          pyinstaller --noconfirm --onefile --noconsole --clean --icon "app_icon.ico" --name "USB_Transfer" app.py
+
+      - name: Determine Version Tag
+        id: get_version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="v1.0.${{ github.run_number }}"
+          fi
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release and Upload Binary
         uses: softprops/action-gh-release@v2
         with:
-          name: "PhoneToUSB Release ${{ github.ref_name }}"
-          body: |
-            ## PhoneToUSB Production Release ${{ github.ref_name }}
-            Secure Internet-Based USB Storage and File Management System.
-
-            ### Downloads:
-            - **Android Smartphone App**: [`PhoneToUSB.apk`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhoneToUSB.apk) (Includes real-time CameraX QR Code Scanner)
-            - **Windows Laptop Receiver**: [`PhoneToUSB.exe`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhoneToUSB.exe) (Portable standalone executable, no ZIP extraction needed)
-
-            ### Integrity SHA-256 Checksums:
-            - `PhoneToUSB.apk`: `${{ env.APK_HASH }}`
-            - `PhoneToUSB.exe`: `${{ env.EXE_HASH }}`
-          files: |
-            dist/PhoneToUSB.apk
-            dist/PhoneToUSB.apk.sha256
-            dist/PhoneToUSB.exe
-            dist/PhoneToUSB.exe.sha256
-            release-manifest.json
+          tag_name: ${{ steps.get_version.outputs.tag }}
+          name: USB Transfer ${{ steps.get_version.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: dist/USB_Transfer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

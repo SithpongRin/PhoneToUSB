@@ -1,1 +1,0 @@
-"""PhoneToUSB Windows Receiver Package"""
