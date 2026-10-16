@@ -17,6 +17,14 @@ from functools import wraps
 from urllib.parse import quote
 import urllib.request
 import json
+import tempfile
+
+# Ensure dedicated Windows Taskbar identity so users can pin the application
+if os.name == "nt":
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("SithpongRin.PhoneToUSB.App.v1")
+    except Exception:
+        pass
 
 # Prevent errors when running windowless via pythonw.exe or PyInstaller --noconsole
 if sys.stdout is None:
@@ -58,11 +66,11 @@ except ModuleNotFoundError:
 
 USB_DRIVE = None
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
-UPLOAD_FOLDER_NAME = "uploads"
+UPLOAD_FOLDER_NAME = "PhoneToUSB"
 DRIVE_REMOVABLE = 2
 
 # Application Version and GitHub Repository for In-App Updates
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 GITHUB_REPO = "SithpongRin/PhoneToUSB"
 
 if getattr(sys, "frozen", False):
@@ -178,6 +186,45 @@ def cleanup_old_binary():
         pass
 
 
+def create_desktop_and_start_menu_shortcuts():
+    """Create Windows Desktop and Start Menu shortcuts with icon for Taskbar Pinning"""
+    if os.name != "nt":
+        return False
+    try:
+        exe_path = sys.executable if getattr(sys, "frozen", False) else os.path.join(BASE_DIR, "USB_Transfer.exe")
+        icon_path = os.path.join(BASE_DIR, "app_icon.ico")
+        if not os.path.isfile(icon_path):
+            icon_path = exe_path
+
+        vbs_lines = [
+            'Set oWS = CreateObject("WScript.Shell")',
+            'sDesk = oWS.SpecialFolders("Desktop") & "\\USB File Transfer.lnk"',
+            'sProg = oWS.SpecialFolders("Programs") & "\\USB File Transfer.lnk"',
+            'Sub Make(p)',
+            '  On Error Resume Next',
+            '  Set l = oWS.CreateShortcut(p)',
+            f'  l.TargetPath = "{exe_path}"',
+            f'  l.WorkingDirectory = "{os.path.dirname(exe_path)}"',
+            f'  l.IconLocation = "{icon_path},0"',
+            '  l.Description = "USB File Transfer"',
+            '  l.Save',
+            'End Sub',
+            'Make(sDesk)',
+            'Make(sProg)',
+        ]
+        vpath = os.path.join(tempfile.gettempdir(), "_mk_sc.vbs")
+        with open(vpath, "w", encoding="utf-8") as f:
+            f.write("\r\n".join(vbs_lines))
+        subprocess.run(["cscript", "//nologo", vpath], creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        try:
+            os.remove(vpath)
+        except OSError:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 # ==============================================================================
 # FAST SYSTEM, IP & USB DETECTION
 # ==============================================================================
@@ -229,30 +276,37 @@ def detect_all_usb_drives(force_refresh=False):
     if os.name == "nt":
         try:
             k32 = ctypes.windll.kernel32
+            # Suppress Windows error dialogs for empty card readers or unmounted drives
+            k32.SetErrorMode(0x0001 | 0x8000)
             mask = k32.GetLogicalDrives()
             for idx in range(2, 26):
                 if mask & (1 << idx):
                     drv = f"{chr(65 + idx)}:"
                     root_path = drv + "\\"
-                    if k32.GetDriveTypeW(ctypes.c_wchar_p(root_path)) == DRIVE_REMOVABLE:
-                        vol_name = get_drive_volume_name(drv)
-                        try:
-                            usage = shutil.disk_usage(root_path)
-                            free_str = format_size(usage.free)
-                            total_str = format_size(usage.total)
-                            used_pct = round(((usage.total - usage.free) / usage.total) * 100) if usage.total else 0
-                        except OSError:
-                            free_str = "Unknown"
-                            total_str = "Unknown"
-                            used_pct = 0
-                        usb_list.append({
-                            "drive": drv,
-                            "label": vol_name,
-                            "display": f"{vol_name} ({drv})",
-                            "free_space": free_str,
-                            "total_space": total_str,
-                            "used_pct": used_pct,
-                        })
+                    try:
+                        dtype = k32.GetDriveTypeW(ctypes.c_wchar_p(root_path))
+                        if dtype == DRIVE_REMOVABLE:
+                            try:
+                                usage = shutil.disk_usage(root_path)
+                                if usage.total <= 0:
+                                    continue
+                                free_str = format_size(usage.free)
+                                total_str = format_size(usage.total)
+                                used_pct = round(((usage.total - usage.free) / usage.total) * 100) if usage.total else 0
+                            except Exception:
+                                continue
+
+                            vol_name = get_drive_volume_name(drv)
+                            usb_list.append({
+                                "drive": drv,
+                                "label": vol_name,
+                                "display": f"{vol_name} ({drv})",
+                                "free_space": free_str,
+                                "total_space": total_str,
+                                "used_pct": used_pct,
+                            })
+                    except Exception:
+                        continue
         except Exception:
             pass
 
@@ -273,65 +327,46 @@ def resolve_storage(force_refresh=False):
             SELECTED_USB_DRIVE = usbs[0]["drive"]
         active_drive = SELECTED_USB_DRIVE
 
-    need_user_choice = (len(usbs) > 1 and active_drive is None)
-    selected_info = next((u for u in usbs if u["drive"] == active_drive), None)
-
-    if selected_info:
-        current_app_drv = os.path.splitdrive(BASE_DIR)[0].upper()
-        base_target = BASE_DIR if current_app_drv == active_drive else (active_drive + "\\")
-        target_dir = os.path.join(base_target, UPLOAD_FOLDER_NAME)
-        try:
-            os.makedirs(target_dir, exist_ok=True)
-            return {
-                "upload_dir": target_dir,
-                "usb_found": True,
-                "need_selection": False,
-                "usb_count": len(usbs),
-                "usbs": usbs,
-                "active_drive": active_drive,
-                "drive_label": selected_info["display"],
-                "free_space": selected_info["free_space"],
-                "total_space": selected_info["total_space"],
-                "message": f"Connected to {selected_info['display']}",
-            }
-        except OSError:
-            pass
-
-    if need_user_choice:
-        fallback_dir = os.path.join(BASE_DIR, UPLOAD_FOLDER_NAME)
-        os.makedirs(fallback_dir, exist_ok=True)
+    # STRICT USB-ONLY REQUIREMENT: DO NOT ALLOW SAVING TO LOCAL HARD DISK!
+    # If no USB flash drive is connected, uploads are strictly blocked.
+    if not usbs:
         return {
-            "upload_dir": fallback_dir,
-            "usb_found": True,
-            "need_selection": True,
-            "usb_count": len(usbs),
-            "usbs": usbs,
+            "upload_dir": "",
+            "usb_found": False,
+            "need_selection": False,
+            "usb_count": 0,
+            "usbs": [],
             "active_drive": None,
-            "drive_label": "Select USB Drive",
-            "free_space": "-",
-            "total_space": "-",
-            "message": f"{len(usbs)} USB drives detected. Please select a target drive.",
+            "drive_label": "No USB Drive Detected",
+            "free_space": "0 B",
+            "total_space": "0 B",
+            "message": "No USB flash drive detected. Please connect a USB drive to transfer files.",
         }
 
-    fallback_dir = os.path.join(BASE_DIR, UPLOAD_FOLDER_NAME)
-    os.makedirs(fallback_dir, exist_ok=True)
-    free_text = "Unknown"
+    # If multiple USB drives are detected and no drive selected yet, default to first available
+    if not active_drive or active_drive not in available_letters:
+        active_drive = usbs[0]["drive"]
+        with STATE_LOCK:
+            SELECTED_USB_DRIVE = active_drive
+
+    selected_info = next((u for u in usbs if u["drive"] == active_drive), usbs[0])
+    target_dir = os.path.join(active_drive + "\\", UPLOAD_FOLDER_NAME)
     try:
-        free_text = format_size(shutil.disk_usage(fallback_dir).free)
+        os.makedirs(target_dir, exist_ok=True)
     except OSError:
         pass
 
     return {
-        "upload_dir": fallback_dir,
-        "usb_found": False,
+        "upload_dir": target_dir,
+        "usb_found": True,
         "need_selection": False,
-        "usb_count": 0,
-        "usbs": [],
-        "active_drive": None,
-        "drive_label": "Local Storage (Fallback)",
-        "free_space": free_text,
-        "total_space": "-",
-        "message": "No USB flash drive detected. Saving to local 'uploads' folder.",
+        "usb_count": len(usbs),
+        "usbs": usbs,
+        "active_drive": active_drive,
+        "drive_label": selected_info["display"],
+        "free_space": selected_info["free_space"],
+        "total_space": selected_info["total_space"],
+        "message": f"Connected to {selected_info['display']}",
     }
 
 
@@ -1105,15 +1140,13 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <div class="status-row animate-in delay-1">
-        <div id="usbBadge" class="status-pill {{ 'warn' if (not storage.usb_found or storage.need_selection) else '' }}">
+        <div id="usbBadge" class="status-pill {{ 'warn' if not storage.usb_found else '' }}">
             <span class="status-dot"></span>
             <span id="usbBadgeText">
-                {% if storage.need_selection %}
-                    Action Required: Select a USB Drive
-                {% elif storage.usb_found %}
+                {% if storage.usb_found %}
                     USB Active: {{ storage.drive_label }} ({{ storage.free_space }} free)
                 {% else %}
-                    No USB Detected (Using Local Fallback)
+                    No USB Connected (Uploads Blocked)
                 {% endif %}
             </span>
         </div>
@@ -1169,9 +1202,17 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
         <div id="usbChoiceList" class="usb-list"></div>
     </div>
 
+    {% if not storage.usb_found %}
+    <div class="card animate-in delay-2" style="margin-bottom:16px;border:1.5px solid var(--danger);background:var(--danger-soft);">
+        <div style="font-weight:700;color:var(--danger);font-size:1.05rem;margin-bottom:6px;">Uploads Blocked: No USB Flash Drive Connected</div>
+        <div style="font-size:0.86rem;color:var(--text-secondary);line-height:1.5;">
+            Files are strictly forbidden from being saved to the laptop local disk. Please plug a USB flash drive into the computer to unlock file transfers.
+        </div>
+    </div>
+    {% else %}
     <div class="card animate-in delay-2" style="margin-bottom:16px;">
         <div class="section-head">
-            <div class="section-title">Upload Files to USB</div>
+            <div class="section-title">Upload Files Directly to USB ({{ storage.active_drive }})</div>
             <span style="font-size:0.78rem;color:var(--text-secondary);">Max 2 GB / file</span>
         </div>
         <label for="filePicker" class="dropzone" id="dropArea">
@@ -1179,12 +1220,13 @@ MOBILE_PAGE_TEMPLATE = """<!DOCTYPE html>
                 <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             <div style="font-weight:700;font-size:0.98rem;">Tap to select files or drag & drop</div>
-            <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Supports PDF, Word, Excel, Photos, Videos & Archives</div>
+            <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Files are stored directly inside {{ storage.active_drive }}\\{{ storage.upload_dir.split('\\')[-1] }}</div>
         </label>
         <input type="file" id="filePicker" multiple style="display:none">
         <div id="mainAlert" class="alert-box"></div>
         <div id="progressContainer"></div>
     </div>
+    {% endif %}
 
     <div class="card animate-in delay-3">
         <div class="section-head">
@@ -1794,6 +1836,10 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
                 <span class="status-dot"></span>
                 <span id="usbStatusText">Checking USB...</span>
             </div>
+            <button type="button" class="theme-toggle" id="pinBtn" onclick="installShortcuts()" title="Pin to Taskbar & Desktop">
+                <svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg>
+                <span>Pin to Taskbar</span>
+            </button>
             <button type="button" class="theme-toggle" id="updateBtn" onclick="checkForUpdates(true)">
                 <svg viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                 <span id="updateBtnText">v{{ current_version }}</span>
@@ -1816,9 +1862,15 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
         <button type="button" class="btn btn-primary" id="startUpdateBtn" onclick="applyUpdate()">Update Now</button>
     </div>
 
-    <div id="usbSelectorPanel" class="usb-selector-banner">
-        <div style="font-weight:700;font-size:0.96rem;">
-            Multiple USB Drives Connected — Select Active Target Drive:
+    <div id="usbSelectorPanel" class="usb-selector-banner" style="display:block;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <div>
+                <div style="font-weight:700;font-size:1.02rem;" id="usbSelectorTitle">Connected USB Flash Drives</div>
+                <div style="font-size:0.83rem;color:var(--text-secondary);margin-top:2px;" id="usbSelectorSub">
+                    Files from mobile phone are saved strictly to USB storage. Local disk storage is disabled.
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline" style="min-height:36px;padding:6px 14px;font-size:0.82rem;" onclick="refreshState(false, false)">Refresh USB</button>
         </div>
         <div id="usbGrid" class="usb-grid"></div>
     </div>
@@ -1944,36 +1996,55 @@ async function refreshState(forceQr, forceCode) {
 
         const pill = document.getElementById('usbStatusPill');
         const pillText = document.getElementById('usbStatusText');
-        if (d.storage.need_selection) {
-            pill.className = 'status-pill warn';
-            pillText.textContent = `${d.storage.usb_count} USBs Found - Select Drive`;
-        } else if (d.storage.usb_found) {
-            pill.className = 'status-pill';
-            pillText.textContent = `USB Ready: ${d.storage.drive_label} (${d.storage.free_space} free)`;
-        } else {
-            pill.className = 'status-pill warn';
-            pillText.textContent = 'No USB Detected (Local Fallback)';
-        }
-
         const selPanel = document.getElementById('usbSelectorPanel');
         const grid = document.getElementById('usbGrid');
-        if (d.storage.usb_count >= 2) {
-            selPanel.style.display = 'block';
-            grid.innerHTML = '';
-            d.storage.usbs.forEach(u => {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                const active = (d.storage.active_drive === u.drive);
-                btn.className = 'usb-drive-card' + (active ? ' selected' : '');
-                btn.innerHTML = `
-                    <div style="font-weight:700;font-size:0.95rem;">${u.display} ${active ? '[Active]' : ''}</div>
-                    <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">Free: ${u.free_space} / Total: ${u.total_space}</div>
-                `;
-                btn.onclick = () => selectUsbDrive(u.drive);
-                grid.appendChild(btn);
-            });
+        const selTitle = document.getElementById('usbSelectorTitle');
+        const selSub = document.getElementById('usbSelectorSub');
+
+        if (d.storage.usb_found && d.storage.usb_count > 0) {
+            pill.className = 'status-pill';
+            pillText.textContent = `USB: ${d.storage.drive_label} (${d.storage.free_space} free)`;
+
+            if (selPanel) selPanel.style.display = 'block';
+            if (selTitle) selTitle.textContent = 'Active Target USB Drive: ' + d.storage.drive_label;
+            if (selSub) {
+                selSub.textContent = d.storage.usb_count > 1 
+                    ? `${d.storage.usb_count} USB drives detected. Click any drive to switch destination:` 
+                    : 'Files will be saved directly into this USB drive:';
+            }
+            if (grid) {
+                grid.innerHTML = '';
+                d.storage.usbs.forEach(u => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    const active = (d.storage.active_drive === u.drive);
+                    btn.className = 'usb-drive-card' + (active ? ' selected' : '');
+                    btn.innerHTML = `
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-weight:700;font-size:0.95rem;">${u.display}</span>
+                            ${active ? '<span style="font-size:0.72rem;background:var(--accent);color:#fff;padding:2px 7px;border-radius:6px;font-weight:700;">ACTIVE</span>' : ''}
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">
+                            Free: <strong>${u.free_space}</strong> / Total: ${u.total_space}
+                        </div>
+                    `;
+                    btn.onclick = () => selectUsbDrive(u.drive);
+                    grid.appendChild(btn);
+                });
+            }
         } else {
-            selPanel.style.display = 'none';
+            pill.className = 'status-pill warn';
+            pillText.textContent = 'No USB Detected (Uploads Blocked)';
+            if (selPanel) selPanel.style.display = 'block';
+            if (selTitle) selTitle.textContent = 'No USB Flash Drive Connected';
+            if (selSub) selSub.textContent = 'Saving to laptop local disk is strictly prohibited. Please plug in a USB flash drive.';
+            if (grid) {
+                grid.innerHTML = `
+                    <div style="grid-column:1/-1;padding:16px 20px;background:var(--danger-soft);border:1.5px solid var(--danger);border-radius:12px;color:var(--danger);font-weight:600;font-size:0.9rem;">
+                        No USB flash drive detected. Please plug a USB flash drive into your laptop. Mobile phone upload is strictly disabled until a USB drive is plugged in.
+                    </div>
+                `;
+            }
         }
     } catch (e) {}
 }
@@ -2041,6 +2112,18 @@ async function applyUpdate() {
             btn.disabled = false;
             btn.textContent = 'Update Now';
         }
+    }
+async function installShortcuts() {
+    try {
+        const r = await fetch('/api/create-shortcuts', {method: 'POST'});
+        const d = await r.json();
+        if (d.ok) {
+            alert("Shortcuts created on Desktop and Windows Start Menu!\n\nTo pin to Taskbar:\n1. Open Windows Start Menu\n2. Search 'USB File Transfer'\n3. Right-click and choose 'Pin to taskbar'.");
+        } else {
+            alert("Could not create shortcuts automatically.");
+        }
+    } catch(e) {
+        alert("Error creating shortcuts.");
     }
 }
 
@@ -2187,13 +2270,21 @@ def api_apply_update():
             with urllib.request.urlopen(req, timeout=120.0) as resp, open(temp_new_exe, "wb") as out_f:
                 shutil.copyfileobj(resp, out_f)
 
+            curr_pid = os.getpid()
             updater_bat = os.path.join(os.path.dirname(target_exe), "_updater_temp.bat")
-            with open(updater_bat, "w") as f:
+            with open(updater_bat, "w", encoding="ascii", errors="ignore") as f:
                 f.write(f'''@echo off
+timeout /t 2 /nobreak >nul
+taskkill /F /PID {curr_pid} >nul 2>&1
+taskkill /F /IM USB_Transfer.exe >nul 2>&1
+taskkill /F /IM pythonw.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
-move /y "{target_exe}" "{target_exe}.old" >nul 2>&1
-move /y "{temp_new_exe}" "{target_exe}" >nul 2>&1
-start "" "{target_exe}"
+if exist "{temp_new_exe}" (
+    move /y "{target_exe}" "{target_exe}.old" >nul 2>&1
+    move /y "{temp_new_exe}" "{target_exe}" >nul 2>&1
+    start "" "{target_exe}"
+)
+timeout /t 2 /nobreak >nul
 del "%~f0"
 ''')
             subprocess.Popen(
@@ -2278,6 +2369,14 @@ def api_select_usb():
     return jsonify({"ok": True, "selected": drv})
 
 
+@app.route("/api/create-shortcuts", methods=["POST"])
+def api_create_shortcuts():
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        return jsonify({"ok": False}), 403
+    ok = create_desktop_and_start_menu_shortcuts()
+    return jsonify({"ok": ok})
+
+
 @app.route("/api/files", methods=["GET"])
 @require_auth
 def list_files_route():
@@ -2292,11 +2391,17 @@ def list_files_route():
 @app.route("/upload", methods=["POST"])
 @require_auth
 def upload_route():
-    st = resolve_storage()
-    if st["need_selection"]:
+    st = resolve_storage(force_refresh=True)
+    if not st.get("usb_found") or not st.get("upload_dir"):
         return jsonify({
             "ok": False,
-            "error": "Multiple USB drives detected. Please select a target USB drive first."
+            "error": "Transfer Blocked: No USB flash drive detected. Uploads must be stored directly on a connected USB drive."
+        }), 403
+
+    if st.get("need_selection"):
+        return jsonify({
+            "ok": False,
+            "error": "Multiple USB drives detected. Please select a target USB drive on the PC first."
         }), 400
 
     if "file" not in request.files:
@@ -2393,6 +2498,7 @@ def open_url_instantly(url):
 
 if __name__ == "__main__":
     cleanup_old_binary()
+    create_desktop_and_start_menu_shortcuts()
     # Check if our server is already actively listening on port 5000
     already_running = False
     try:

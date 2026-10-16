@@ -32,7 +32,7 @@ jobs:
 
       - name: Build Standalone Executable
         run: |
-          pyinstaller --noconfirm --onefile --noconsole --clean --icon "app_icon.ico" --name "USB_Transfer" app.py
+          pyinstaller --noconfirm --onefile --noconsole --clean --noupx --icon "app_icon.ico" --version-file "version_info.txt" --name "USB_Transfer" app.py
 
       - name: Determine Version Tag
         id: get_version
@@ -41,7 +41,8 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
           else
-            VERSION="v1.0.${{ github.run_number }}"
+            APP_VER=$(python -c "import re; m = re.search(r'APP_VERSION\s*=\s*[\"\\\']([^\"\\\']+)[\"\\\']', open('app.py', encoding='utf-8').read()); print(m.group(1) if m else '1.0.1')")
+            VERSION="v${APP_VER}"
           fi
           echo "tag=$VERSION" >> $GITHUB_OUTPUT
 
@@ -53,6 +54,7 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          make_latest: true
           files: dist/USB_Transfer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
