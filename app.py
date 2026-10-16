@@ -18,9 +18,16 @@ from urllib.parse import quote
 import urllib.request
 import json
 import tempfile
+import atexit
 
-# Ensure dedicated Windows Taskbar identity so users can pin the application
+# Ensure dedicated Windows Taskbar identity and hide console window seamlessly
 if os.name == "nt":
+    try:
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)
+    except Exception:
+        pass
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("SithpongRin.PhoneToUSB.App.v1")
     except Exception:
@@ -372,6 +379,120 @@ def resolve_storage(force_refresh=False):
     }
 
 
+def find_ssh_exe():
+    ssh_path = shutil.which("ssh")
+    if ssh_path and os.path.isfile(ssh_path):
+        return ssh_path
+    sys32_ssh = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "ssh.exe")
+    if os.path.isfile(sys32_ssh):
+        return sys32_ssh
+    return "ssh"
+
+
+class TunnelManager:
+    def __init__(self):
+        self.process = None
+        self.url = None
+        self.status = "stopped"
+        self.error = None
+        self.lock = threading.Lock()
+
+    def start(self):
+        with self.lock:
+            if self.process and self.process.poll() is None and self.url:
+                return self.url
+            if self.process:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+                self.process = None
+            self.status = "starting"
+            self.error = None
+            self.url = None
+
+        ssh_exe = find_ssh_exe()
+
+        def run_tunnel():
+            cmd = [
+                ssh_exe,
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=NUL",
+                "-o", "ServerAliveInterval=30",
+                "-o", "ExitOnForwardFailure=yes",
+                "-R", f"80:127.0.0.1:{ACTIVE_PORT}",
+                "nokey@localhost.run"
+            ]
+            try:
+                p = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                )
+                with self.lock:
+                    self.process = p
+
+                discovered = None
+                for line in p.stdout:
+                    if not line:
+                        break
+                    m = re.search(r"https://[a-zA-Z0-9\-\.]+\.lhr\.life", line)
+                    if m:
+                        discovered = m.group(0)
+                        with self.lock:
+                            self.url = discovered
+                            self.status = "running"
+                        break
+                if not discovered:
+                    with self.lock:
+                        if self.status != "running":
+                            self.status = "error"
+                            self.error = "Could not obtain public tunnel URL."
+            except Exception as e:
+                with self.lock:
+                    self.status = "error"
+                    self.error = str(e)
+
+        threading.Thread(target=run_tunnel, daemon=True).start()
+        start_t = time.time()
+        while time.time() - start_t < 6.0:
+            with self.lock:
+                if self.url and self.status == "running":
+                    return self.url
+                if self.status == "error":
+                    break
+            time.sleep(0.25)
+        return self.url
+
+    def stop(self):
+        with self.lock:
+            if self.process:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+                self.process = None
+            self.url = None
+            self.status = "stopped"
+            self.error = None
+
+    def get_info(self):
+        with self.lock:
+            if self.process and self.process.poll() is not None:
+                self.status = "stopped"
+                self.url = None
+            return {
+                "active": self.status == "running" and bool(self.url),
+                "url": self.url,
+                "status": self.status,
+                "error": self.error,
+            }
+
+tunnel_mgr = TunnelManager()
+atexit.register(tunnel_mgr.stop)
+CONNECTION_MODE = "wifi"  # "wifi", "hotspot", "phone", "internet"
 SELECTED_IP = None
 
 def get_all_laptop_ips():
@@ -394,6 +515,53 @@ def get_all_laptop_ips():
     if not ips:
         ips.append("127.0.0.1")
     return ips
+
+
+def classify_network_modes():
+    all_ips = get_all_laptop_ips()
+    wifi_ip = None
+    hotspot_ip = None
+    phone_ip = None
+
+    for ip in all_ips:
+        if ip.startswith("192.168.137."):
+            hotspot_ip = ip
+        elif ip.startswith("192.168.43.") or ip.startswith("172.20.10."):
+            phone_ip = ip
+        elif not wifi_ip:
+            wifi_ip = ip
+
+    if not wifi_ip:
+        wifi_ip = all_ips[0] if all_ips else "127.0.0.1"
+    if not hotspot_ip:
+        hotspot_ip = "192.168.137.1"
+    if not phone_ip:
+        phone_ip = "192.168.43.1"
+
+    return {
+        "wifi": wifi_ip,
+        "hotspot": hotspot_ip,
+        "phone": phone_ip,
+        "all_ips": all_ips,
+    }
+
+
+def get_active_target_url():
+    global CONNECTION_MODE
+    with STATE_LOCK:
+        mode = CONNECTION_MODE
+    if mode == "internet":
+        info = tunnel_mgr.get_info()
+        if info["active"] and info["url"]:
+            return info["url"]
+    modes = classify_network_modes()
+    if mode == "hotspot":
+        ip = modes["hotspot"]
+    elif mode == "phone":
+        ip = modes["phone"]
+    else:
+        ip = modes["wifi"]
+    return f"http://{ip}:{ACTIVE_PORT}"
 
 
 def get_laptop_ip():
@@ -497,6 +665,12 @@ def make_svg_qr(url_str):
 
 
 def is_local_request():
+    if request.headers.get("X-Forwarded-For") or request.headers.get("X-Forwarded-Host"):
+        return False
+    host = request.headers.get("Host", "").split(":")[0].lower()
+    if host and host not in ("localhost", "127.0.0.1", "::1") and not host.startswith("192.168.") and not host.startswith("10.") and not host.startswith("172."):
+        return False
+
     ip = request.remote_addr
     if ip in ("127.0.0.1", "::1", "localhost"):
         return True
@@ -640,6 +814,54 @@ body {
     color: var(--text-secondary);
     border: 1px solid var(--border-subtle);
     font-family: Consolas, monospace;
+}
+
+.mode-switch-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.mode-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 7px 10px;
+    border-radius: var(--btn-radius);
+    border: 1px solid var(--border-color);
+    background: var(--btn-outline-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+}
+
+.mode-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-color);
+}
+
+.mode-btn.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.mode-btn-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.mode-btn-sub {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.mode-btn.active .mode-btn-sub {
+    color: var(--accent);
+    opacity: 0.85;
 }
 
 .animate-in {
@@ -1928,7 +2150,30 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
                         <span style="color:var(--text-muted);">Server URL:</span>
                         <strong id="baseUrlText" style="color:var(--text-primary);font-family:Consolas,monospace;">{{ target_url }}</strong>
                     </div>
-                    <div id="ipSwitchRow" style="display:none;margin-top:8px;"></div>
+                    <div style="margin-top:14px;border-top:1px solid var(--border-color);padding-top:12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <span style="font-size:0.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Connection Mode</span>
+                            <span id="modeStatusBadge" style="font-size:0.7rem;padding:2px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-weight:600;">Active</span>
+                        </div>
+                        <div class="mode-switch-grid">
+                            <button type="button" class="mode-btn{% if connection_mode == 'wifi' %} active{% endif %}" id="modeBtnWifi" onclick="switchConnectionMode('wifi')">
+                                <span class="mode-btn-title">1. Same Wi-Fi</span>
+                                <span class="mode-btn-sub" id="modeSubWifi">Local Router</span>
+                            </button>
+                            <button type="button" class="mode-btn{% if connection_mode == 'hotspot' %} active{% endif %}" id="modeBtnHotspot" onclick="switchConnectionMode('hotspot')">
+                                <span class="mode-btn-title">2. Laptop Hotspot</span>
+                                <span class="mode-btn-sub" id="modeSubHotspot">Windows Hotspot</span>
+                            </button>
+                            <button type="button" class="mode-btn{% if connection_mode == 'phone' %} active{% endif %}" id="modeBtnPhone" onclick="switchConnectionMode('phone')">
+                                <span class="mode-btn-title">3. Phone Hotspot</span>
+                                <span class="mode-btn-sub" id="modeSubPhone">Phone AP</span>
+                            </button>
+                            <button type="button" class="mode-btn{% if connection_mode == 'internet' %} active{% endif %}" id="modeBtnInternet" onclick="switchConnectionMode('internet')">
+                                <span class="mode-btn-title">4. Internet (4G/5G)</span>
+                                <span class="mode-btn-sub" id="modeSubInternet">Public HTTPS</span>
+                            </button>
+                        </div>
+                    </div>
                     <div id="shareOutput" class="toast-box"></div>
                 </div>
             </div>
@@ -1948,11 +2193,54 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
 <script>
 """ + THEME_SCRIPT + """
 let lastQrId = "{{ qr_id }}";
+let lastTargetUrl = "{{ target_url }}";
+let currentMode = "{{ connection_mode }}";
+let isSwitchingMode = false;
 
 function formatMMSS(totalSec) {
     const m = Math.floor(totalSec / 60);
     const s = totalSec % 60;
     return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+async function switchConnectionMode(mode) {
+    if (isSwitchingMode) return;
+    isSwitchingMode = true;
+
+    const badge = document.getElementById('modeStatusBadge');
+    if (badge) {
+        badge.textContent = (mode === 'internet') ? 'Starting Tunnel...' : 'Switching...';
+    }
+
+    try {
+        const r = await fetch('/api/set-connection-mode', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({mode: mode})
+        });
+        const d = await r.json();
+        if (r.ok && d.ok) {
+            currentMode = d.mode;
+            await refreshState(true, false);
+            if (badge) badge.textContent = (d.mode === 'internet') ? 'Tunnel Active' : 'Active';
+        } else {
+            const out = document.getElementById('shareOutput');
+            if (out) {
+                out.style.display = 'block';
+                out.textContent = d.error || 'Failed to switch connection mode.';
+            }
+            if (badge) badge.textContent = 'Error';
+        }
+    } catch (e) {
+        const out = document.getElementById('shareOutput');
+        if (out) {
+            out.style.display = 'block';
+            out.textContent = 'Connection error when switching mode.';
+        }
+        if (badge) badge.textContent = 'Error';
+    } finally {
+        isSwitchingMode = false;
+    }
 }
 
 async function selectUsbDrive(drv) {
@@ -2010,9 +2298,10 @@ async function refreshState(forceQr, forceCode) {
         if (!r.ok) return;
         const d = await r.json();
 
-        if (d.qr_id !== lastQrId || forceQr) {
+        if (d.qr_id !== lastQrId || d.target_url !== lastTargetUrl || forceQr) {
             document.getElementById('qrContainer').innerHTML = d.qr_svg;
             lastQrId = d.qr_id;
+            lastTargetUrl = d.target_url;
         }
 
         document.getElementById('accessCodeText').textContent = d.access_code;
@@ -2076,31 +2365,50 @@ async function refreshState(forceQr, forceCode) {
             }
         }
 
-        const ipRow = document.getElementById('ipSwitchRow');
-        if (ipRow && d.all_ips && d.all_ips.length > 1) {
-            ipRow.style.display = 'flex';
-            ipRow.style.gap = '6px';
-            ipRow.style.alignItems = 'center';
-            ipRow.style.flexWrap = 'wrap';
-            ipRow.innerHTML = '<span style="font-size:0.75rem;color:var(--text-muted);">Network:</span>' + d.all_ips.map(ip => {
-                const active = (ip === d.active_ip);
-                const tag = ip.startsWith('192.168.137.') ? 'Hotspot' : 'Wi-Fi';
-                return `<button type="button" class="seg-opt${active ? ' active' : ''}" style="height:24px;font-size:0.72rem;padding:0 8px;" onclick="selectIp('${ip}')">${ip} (${tag})</button>`;
-            }).join('');
-        }
-    } catch (e) {}
-}
+        const activeMode = d.connection_mode || currentMode || 'wifi';
+        currentMode = activeMode;
 
-async function selectIp(ip) {
-    try {
-        const r = await fetch('/api/select-ip', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ip: ip})
-        });
-        const d = await r.json();
-        if (d.ok) {
-            refreshState(true, false);
+        const modeBtns = {
+            'wifi': document.getElementById('modeBtnWifi'),
+            'hotspot': document.getElementById('modeBtnHotspot'),
+            'phone': document.getElementById('modeBtnPhone'),
+            'internet': document.getElementById('modeBtnInternet')
+        };
+
+        for (const [key, btn] of Object.entries(modeBtns)) {
+            if (btn) {
+                if (key === activeMode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            }
+        }
+
+        if (d.network_modes) {
+            const subWifi = document.getElementById('modeSubWifi');
+            const subHotspot = document.getElementById('modeSubHotspot');
+            const subPhone = document.getElementById('modeSubPhone');
+            if (subWifi) subWifi.textContent = d.network_modes.wifi ? d.network_modes.wifi : 'Local Router';
+            if (subHotspot) subHotspot.textContent = d.network_modes.hotspot ? d.network_modes.hotspot : '192.168.137.1';
+            if (subPhone) subPhone.textContent = d.network_modes.phone ? d.network_modes.phone : 'Phone AP';
+        }
+
+        const subInternet = document.getElementById('modeSubInternet');
+        const badge = document.getElementById('modeStatusBadge');
+        if (d.tunnel_info && d.tunnel_info.active) {
+            if (subInternet) subInternet.textContent = 'Active (HTTPS)';
+            if (activeMode === 'internet' && badge && !isSwitchingMode) badge.textContent = 'Tunnel Active';
+        } else if (activeMode === 'internet') {
+            if (subInternet) subInternet.textContent = 'Connecting...';
+            if (badge && !isSwitchingMode) badge.textContent = 'Connecting...';
+        } else {
+            if (subInternet) subInternet.textContent = 'Public HTTPS';
+            if (badge && !isSwitchingMode) badge.textContent = 'Active';
+        }
+
+        if (activeMode === 'internet' && (!d.tunnel_info || !d.tunnel_info.active)) {
+            setTimeout(() => refreshState(true, false), 1500);
         }
     } catch (e) {}
 }
@@ -2315,18 +2623,18 @@ def laptop_qr_view():
         ), 403
 
     state = check_and_rotate_state()
-    ip_val = get_laptop_ip()
-    qr_url = f"http://{ip_val}:{ACTIVE_PORT}/?q={state['qr_id']}"
-    display_url = f"http://{ip_val}:{ACTIVE_PORT}"
+    target_base = get_active_target_url()
+    qr_url = f"{target_base}/?q={state['qr_id']}"
     st = resolve_storage()
     return render_template_string(
         LAPTOP_QR_TEMPLATE,
         qr_svg=make_svg_qr(qr_url),
         qr_id=state["qr_id"],
         access_code=state["access_code"],
-        target_url=display_url,
+        target_url=target_base,
         storage=st,
         current_version=APP_VERSION,
+        connection_mode=CONNECTION_MODE,
     )
 
 
@@ -2432,11 +2740,13 @@ def api_qr_state():
     force_qr = request.args.get("force_qr") == "1"
     force_code = request.args.get("force_code") == "1"
     state = check_and_rotate_state(force_qr=force_qr, force_code=force_code)
-    all_ips = get_all_laptop_ips()
-    ip_val = get_laptop_ip()
-    qr_url = f"http://{ip_val}:{ACTIVE_PORT}/?q={state['qr_id']}"
-    display_url = f"http://{ip_val}:{ACTIVE_PORT}"
+    
+    target_base = get_active_target_url()
+    qr_url = f"{target_base}/?q={state['qr_id']}"
     st = resolve_storage()
+    modes = classify_network_modes()
+    t_info = tunnel_mgr.get_info()
+
     return jsonify({
         "ok": True,
         "qr_id": state["qr_id"],
@@ -2444,28 +2754,45 @@ def api_qr_state():
         "access_code": state["access_code"],
         "remaining": state["remaining"],
         "interval_sec": state["interval_sec"],
-        "target_url": display_url,
-        "active_ip": ip_val,
-        "all_ips": all_ips,
+        "target_url": target_base,
+        "connection_mode": CONNECTION_MODE,
+        "network_modes": modes,
+        "tunnel_info": t_info,
         "storage": st,
     })
 
 
-@app.route("/api/select-ip", methods=["POST"])
-def api_select_ip():
+@app.route("/api/set-connection-mode", methods=["POST"])
+def api_set_connection_mode():
     if not is_local_request():
         return jsonify({"ok": False}), 403
-    global SELECTED_IP, _CACHED_QR_KEY, _CACHED_QR_SVG
+    global CONNECTION_MODE, _CACHED_QR_KEY, _CACHED_QR_SVG
     body = request.get_json(silent=True) or {}
-    chosen = body.get("ip", "").strip()
-    all_ips = get_all_laptop_ips()
-    if chosen in all_ips:
-        with STATE_LOCK:
-            SELECTED_IP = chosen
-            _CACHED_QR_KEY = None
-            _CACHED_QR_SVG = None
-        return jsonify({"ok": True, "ip": chosen})
-    return jsonify({"ok": False, "error": "Invalid IP."}), 400
+    mode = body.get("mode", "wifi").strip().lower()
+    if mode not in ("wifi", "hotspot", "phone", "internet"):
+        return jsonify({"ok": False, "error": "Invalid connection mode."}), 400
+
+    if mode == "internet":
+        url = tunnel_mgr.start()
+        if not url:
+            return jsonify({
+                "ok": False,
+                "error": tunnel_mgr.error or "Could not establish secure internet tunnel. Please verify internet connection."
+            }), 500
+    else:
+        tunnel_mgr.stop()
+
+    with STATE_LOCK:
+        CONNECTION_MODE = mode
+        _CACHED_QR_KEY = None
+        _CACHED_QR_SVG = None
+
+    return jsonify({
+        "ok": True,
+        "mode": CONNECTION_MODE,
+        "target_url": get_active_target_url(),
+        "tunnel_info": tunnel_mgr.get_info(),
+    })
 
 
 @app.route("/api/set-interval", methods=["POST"])
@@ -2485,11 +2812,11 @@ def api_generate_link():
     minutes = int(body.get("minutes", 30))
     file_target = str(body.get("file", "")).strip()
     token, valid_mins = create_share_link_token(minutes_valid=minutes)
-    ip_val = get_laptop_ip()
+    target_base = get_active_target_url()
     if file_target:
-        share_url = f"http://{ip_val}:{ACTIVE_PORT}/?link={token}&file={file_target}"
+        share_url = f"{target_base}/?link={token}&file={file_target}"
     else:
-        share_url = f"http://{ip_val}:{ACTIVE_PORT}/?link={token}"
+        share_url = f"{target_base}/?link={token}"
     return jsonify({
         "ok": True,
         "url": share_url,
@@ -2644,26 +2971,37 @@ def open_url_instantly(url):
 
 
 if __name__ == "__main__":
-    cleanup_old_binary()
-    create_desktop_and_start_menu_shortcuts()
-    # Check if our server is already actively listening on port 5000
-    already_running = False
+    import multiprocessing
+    multiprocessing.freeze_support()
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_sock:
-            test_sock.settimeout(0.2)
-            test_sock.connect(("127.0.0.1", 5000))
-            already_running = True
-    except OSError:
+        cleanup_old_binary()
+        create_desktop_and_start_menu_shortcuts()
+        # Check if our server is already actively listening on port 5000
         already_running = False
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_sock:
+                test_sock.settimeout(0.2)
+                test_sock.connect(("127.0.0.1", 5000))
+                already_running = True
+        except OSError:
+            already_running = False
 
-    if already_running:
-        # Server is already running on port 5000! Open the page immediately and exit.
-        open_url_instantly("http://127.0.0.1:5000/qr")
-        sys.exit(0)
+        if already_running:
+            # Server is already running on port 5000! Open the page immediately and exit.
+            open_url_instantly("http://127.0.0.1:5000/qr")
+            sys.exit(0)
 
-    ACTIVE_PORT = 5000
-    # Pre-warm caches before opening browser so first page load takes < 10ms
-    get_laptop_ip()
-    resolve_storage(force_refresh=True)
-    threading.Timer(0.15, open_url_instantly, args=(f"http://127.0.0.1:{ACTIVE_PORT}/qr",)).start()
-    app.run(host="0.0.0.0", port=ACTIVE_PORT, debug=False, threaded=True)
+        ACTIVE_PORT = 5000
+        # Pre-warm caches before opening browser so first page load takes < 10ms
+        get_laptop_ip()
+        resolve_storage(force_refresh=True)
+        threading.Timer(0.15, open_url_instantly, args=(f"http://127.0.0.1:{ACTIVE_PORT}/qr",)).start()
+        app.run(host="0.0.0.0", port=ACTIVE_PORT, debug=False, threaded=True)
+    except Exception as exc:
+        try:
+            log_p = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "crash.log")
+            with open(log_p, "w", encoding="utf-8") as f:
+                import traceback
+                traceback.print_exc(file=f)
+        except Exception:
+            pass
