@@ -15,6 +15,8 @@ from io import BytesIO
 from datetime import datetime
 from functools import wraps
 from urllib.parse import quote
+import urllib.request
+import json
 
 # Prevent errors when running windowless via pythonw.exe or PyInstaller --noconsole
 if sys.stdout is None:
@@ -2136,7 +2138,7 @@ def api_check_update():
                 "Accept": "application/vnd.github.v3+json",
             },
         )
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
                 tag_name = data.get("tag_name", "")
@@ -2162,7 +2164,7 @@ def api_check_update():
                     "release_notes": data.get("body", "")[:280] if data.get("body") else "",
                 })
     except Exception as e:
-        return jsonify({"ok": False, "error": "Could not check for updates."}), 500
+        return jsonify({"ok": False, "error": f"Could not check for updates: {str(e)}"}), 500
 
 
 @app.route("/api/apply-update", methods=["POST"])
@@ -2391,15 +2393,17 @@ def open_url_instantly(url):
 
 if __name__ == "__main__":
     cleanup_old_binary()
-    # Instantaneous (< 1ms) check if port 5000 is already bound by our server
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_sock:
-        try:
-            test_sock.bind(("0.0.0.0", 5000))
-            port_is_free = True
-        except OSError:
-            port_is_free = False
+    # Check if our server is already actively listening on port 5000
+    already_running = False
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_sock:
+            test_sock.settimeout(0.2)
+            test_sock.connect(("127.0.0.1", 5000))
+            already_running = True
+    except OSError:
+        already_running = False
 
-    if not port_is_free:
+    if already_running:
         # Server is already running on port 5000! Open the page immediately and exit.
         open_url_instantly("http://127.0.0.1:5000/qr")
         sys.exit(0)
