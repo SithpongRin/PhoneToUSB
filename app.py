@@ -77,7 +77,7 @@ UPLOAD_FOLDER_NAME = "PhoneToUSB"
 DRIVE_REMOVABLE = 2
 
 # Application Version and GitHub Repository for In-App Updates
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.9"
 GITHUB_REPO = "SithpongRin/PhoneToUSB"
 
 if getattr(sys, "frozen", False):
@@ -2938,7 +2938,7 @@ def api_check_update():
     if not is_local_request():
         return jsonify({"ok": False}), 403
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
         req = urllib.request.Request(
             url,
             headers={
@@ -2948,33 +2948,52 @@ def api_check_update():
         )
         with urllib.request.urlopen(req, timeout=10.0) as resp:
             if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
-                tag_name = data.get("tag_name", "")
-                latest_ver = parse_version(tag_name)
-                current_ver = parse_version(APP_VERSION)
-                has_update = latest_ver > current_ver
+                releases = json.loads(resp.read().decode("utf-8"))
+                candidates = []
+                for r in releases:
+                    if r.get("draft") or r.get("prerelease"):
+                        continue
+                    tag = r.get("tag_name", "")
+                    ver = parse_version(tag)
+                    exe_asset = None
+                    for a in r.get("assets", []):
+                        aname = a.get("name", "").lower()
+                        if aname == "usb_transfer.exe":
+                            exe_asset = a
+                            break
+                        elif aname.endswith(".exe") and not exe_asset:
+                            exe_asset = a
+                    if exe_asset:
+                        candidates.append((ver, tag, exe_asset, r))
 
-                download_url = ""
-                asset_size = 0
-                for asset in data.get("assets", []):
-                    name = asset.get("name", "").lower()
-                    if name == "usb_transfer.exe":
-                        download_url = asset.get("browser_download_url", "")
-                        asset_size = asset.get("size", 0)
-                        break
-                    elif name.endswith(".exe") and not download_url:
-                        download_url = asset.get("browser_download_url", "")
-                        asset_size = asset.get("size", 0)
+                if candidates:
+                    candidates.sort(key=lambda x: x[0], reverse=True)
+                    best_ver, best_tag, best_asset, best_release = candidates[0]
+                    current_ver = parse_version(APP_VERSION)
+                    has_update = best_ver > current_ver
+                    download_url = best_asset.get("browser_download_url", "")
+                    asset_size = best_asset.get("size", 0)
+                    body_text = best_release.get("body", "") or ""
 
-                return jsonify({
-                    "ok": True,
-                    "current_version": APP_VERSION,
-                    "latest_version": tag_name,
-                    "has_update": has_update and bool(download_url),
-                    "download_url": download_url,
-                    "asset_size_str": format_size(asset_size),
-                    "release_notes": data.get("body", "")[:280] if data.get("body") else "",
-                })
+                    return jsonify({
+                        "ok": True,
+                        "current_version": APP_VERSION,
+                        "latest_version": best_tag,
+                        "has_update": has_update and bool(download_url),
+                        "download_url": download_url,
+                        "asset_size_str": format_size(asset_size),
+                        "release_notes": body_text[:280] if body_text else "",
+                    })
+                else:
+                    return jsonify({
+                        "ok": True,
+                        "current_version": APP_VERSION,
+                        "latest_version": f"v{APP_VERSION}",
+                        "has_update": False,
+                        "download_url": "",
+                        "asset_size_str": "0 B",
+                        "release_notes": "",
+                    })
     except Exception as e:
         return jsonify({"ok": False, "error": f"Could not check for updates: {str(e)}"}), 500
 
@@ -3026,6 +3045,17 @@ del "%~f0"
 
     threading.Thread(target=run_updater_thread, daemon=True).start()
     return jsonify({"ok": True, "message": "Downloading update and restarting..."})
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def api_shutdown():
+    if not is_local_request():
+        return jsonify({"ok": False}), 403
+    def _do_exit():
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_do_exit, daemon=True).start()
+    return jsonify({"ok": True, "message": "Shutting down..."})
 
 
 @app.route("/api/qr-state", methods=["GET"])
