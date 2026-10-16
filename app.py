@@ -2270,10 +2270,14 @@ def api_check_update():
                 download_url = ""
                 asset_size = 0
                 for asset in data.get("assets", []):
-                    if asset.get("name", "").lower().endswith(".exe"):
+                    name = asset.get("name", "").lower()
+                    if name == "usb_transfer.exe":
                         download_url = asset.get("browser_download_url", "")
                         asset_size = asset.get("size", 0)
                         break
+                    elif name.endswith(".exe") and not download_url:
+                        download_url = asset.get("browser_download_url", "")
+                        asset_size = asset.get("size", 0)
 
                 return jsonify({
                     "ok": True,
