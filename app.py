@@ -86,8 +86,10 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+app.secret_key = os.urandom(32)
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 ACTIVE_PORT = 5000
 
@@ -104,7 +106,13 @@ LAST_ROTATE_TIME = time.time()
 # 6-digit Access Code required to unlock transfer session
 ACCESS_CODE = f"{secrets.randbelow(900000) + 100000}"
 
-# Generated direct share links: {token: expire_timestamp}
+# Rate limiting for 6-digit PIN verification (brute-force defense)
+VERIFY_ATTEMPTS = {}
+LOCKOUT_UNTIL = {}
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_SECONDS = 60
+
+# Generated direct share links: {token: {token, expire_at, file, scope, revoked, created_at}}
 GENERATED_LINKS = {}
 
 # Fast cache for IP and USB detection so UI never lags
@@ -152,27 +160,82 @@ def set_rotation_interval(minutes_val):
             LAST_ROTATE_TIME = time.time()
 
 
-def create_share_link_token(minutes_valid=30):
-    token = secrets.token_urlsafe(10)
-    expire_at = time.time() + (minutes_valid * 60)
+def create_share_link_token(minutes_valid=30, file_target=None, scope=None):
+    # High-entropy unpredictable token (>140 bits)
+    token = secrets.token_urlsafe(20)
+    expire_at = time.time() + (max(1, minutes_valid) * 60)
+    if not scope:
+        scope = "file" if file_target else "full"
     with STATE_LOCK:
         now = time.time()
-        expired = [k for k, v in GENERATED_LINKS.items() if v < now]
+        expired = [k for k, v in GENERATED_LINKS.items() if v.get("expire_at", 0) < now]
         for k in expired:
             del GENERATED_LINKS[k]
-        GENERATED_LINKS[token] = expire_at
+        GENERATED_LINKS[token] = {
+            "token": token,
+            "expire_at": expire_at,
+            "file": file_target,
+            "scope": scope,
+            "revoked": False,
+            "created_at": now,
+        }
     return token, minutes_valid
 
 
-def verify_share_link_token(token_str):
+def get_share_token_info(token_str):
     if not token_str:
-        return False
+        return None
     now = time.time()
     with STATE_LOCK:
+        info = GENERATED_LINKS.get(token_str)
+        if not info:
+            return None
+        if info.get("revoked"):
+            return None
+        if info.get("expire_at", 0) < now:
+            return None
+        return dict(info)
+
+
+def verify_share_link_token(token_str):
+    info = get_share_token_info(token_str)
+    return info is not None
+
+
+def revoke_share_link_token(token_str):
+    with STATE_LOCK:
         if token_str in GENERATED_LINKS:
-            if GENERATED_LINKS[token_str] >= now:
-                return True
-            del GENERATED_LINKS[token_str]
+            GENERATED_LINKS[token_str]["revoked"] = True
+            return True
+        return False
+
+
+def record_failed_attempt(ip):
+    now = time.time()
+    with STATE_LOCK:
+        attempts = VERIFY_ATTEMPTS.setdefault(ip, [])
+        attempts = [t for t in attempts if now - t < LOCKOUT_SECONDS]
+        attempts.append(now)
+        VERIFY_ATTEMPTS[ip] = attempts
+        if len(attempts) >= MAX_FAILED_ATTEMPTS:
+            LOCKOUT_UNTIL[ip] = now + LOCKOUT_SECONDS
+
+
+def check_ip_lockout(ip):
+    now = time.time()
+    with STATE_LOCK:
+        lock_until = LOCKOUT_UNTIL.get(ip, 0)
+        if now < lock_until:
+            return True, int(lock_until - now) + 1
+        return False, 0
+
+
+def clear_verify_attempts(ip):
+    with STATE_LOCK:
+        VERIFY_ATTEMPTS.pop(ip, None)
+        LOCKOUT_UNTIL.pop(ip, None)
+
+
 def parse_version(v_str):
     """Parse version string like 'v1.0.3' or '1.0.3' into tuple of integers"""
     clean = re.sub(r'^[^\d]*', '', str(v_str))
@@ -420,10 +483,11 @@ class TunnelManager:
         ssh_exe = find_ssh_exe()
 
         def run_tunnel():
+            known_hosts_file = os.path.join(tempfile.gettempdir(), "_ptu_known_hosts")
             cmd = [
                 ssh_exe,
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=NUL",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", f"UserKnownHostsFile={known_hosts_file}",
                 "-o", "ServerAliveInterval=30",
                 "-o", "ExitOnForwardFailure=yes",
                 "-R", f"80:127.0.0.1:{ACTIVE_PORT}",
@@ -579,11 +643,21 @@ def get_laptop_ip():
     return all_ips[0]
 
 
+WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+}
+
+
 def clean_filename(raw_name):
     if not raw_name:
         return f"file_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    base = os.path.basename(raw_name.replace("\\", "/"))
+    base = os.path.basename(str(raw_name).replace("\\", "/"))
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", base).strip(" .")
+    stem = os.path.splitext(cleaned)[0].upper()
+    if stem in WINDOWS_RESERVED_NAMES:
+        cleaned = f"safe_{cleaned}"
     if not cleaned:
         cleaned = f"file_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     return cleaned
@@ -603,6 +677,56 @@ def unique_destination(folder, fname):
         full = os.path.join(folder, candidate)
         seq += 1
     return candidate, full
+
+
+def safe_usb_resolve(filename, must_exist=True):
+    """
+    Centralized, hardened path resolution for all USB operations.
+    Enforces:
+    1. Mandatory USB presence (never falls back to internal drive).
+    2. Path traversal prevention (rejects ../ and ..\\).
+    3. Absolute path injection prevention.
+    4. Canonical path resolution using os.path.realpath.
+    5. Containment check ensuring target stays strictly inside upload_dir.
+    6. Trailing dot/space and NTFS alternate data stream prevention.
+    7. Existence check if must_exist=True.
+    Returns: (canonical_path, error_message, status_code)
+    """
+    st = resolve_storage()
+    if not st.get("usb_found") or not st.get("upload_dir"):
+        return None, "No USB flash drive detected. Please connect a USB drive.", 403
+
+    upload_dir = st["upload_dir"]
+    if not upload_dir or not os.path.isdir(upload_dir):
+        return None, "Target USB storage directory is inaccessible.", 403
+
+    raw_str = str(filename or "")
+    if "/" in raw_str or "\\" in raw_str or ".." in raw_str:
+        base_check = os.path.basename(raw_str.replace("\\", "/"))
+        if base_check != raw_str:
+            return None, "Access denied: path traversal attempt detected.", 403
+
+    sanitized = clean_filename(filename)
+    if not sanitized or sanitized.endswith(".part"):
+        return None, "Invalid or disallowed filename.", 400
+
+    canonical_upload_dir = os.path.realpath(os.path.abspath(upload_dir))
+    target_path = os.path.abspath(os.path.join(canonical_upload_dir, sanitized))
+    canonical_target = os.path.realpath(target_path)
+
+    try:
+        common = os.path.commonpath([canonical_target, canonical_upload_dir])
+    except ValueError:
+        return None, "Access denied: destination outside authorized USB drive.", 403
+
+    if common != canonical_upload_dir or canonical_target == canonical_upload_dir:
+        return None, "Access denied: path traversal detected.", 403
+
+    if must_exist and not os.path.isfile(canonical_target):
+        return None, "File not found on USB drive.", 404
+
+    return canonical_target, None, 200
+
 
 
 def badge_for_file(fname):
@@ -683,11 +807,16 @@ def make_svg_qr(url_str):
 
 
 def is_local_request():
-    if request.headers.get("X-Forwarded-For") or request.headers.get("X-Forwarded-Host"):
-        return False
-    host = request.headers.get("Host", "").split(":")[0].lower()
-    if host and host not in ("localhost", "127.0.0.1", "::1") and not host.startswith("192.168.") and not host.startswith("10.") and not host.startswith("172."):
-        return False
+    forwarding_headers = [
+        "X-Forwarded-For",
+        "X-Forwarded-Host",
+        "X-Forwarded-Proto",
+        "X-Real-IP",
+        "Forwarded",
+    ]
+    for h in forwarding_headers:
+        if request.headers.get(h):
+            return False
 
     ip = request.remote_addr
     if ip in ("127.0.0.1", "::1", "localhost"):
@@ -711,8 +840,48 @@ def is_session_authenticated():
         current_code = ACCESS_CODE
     if session.get("verified_code") == current_code:
         return True
-    if session.get("link_verified"):
+    if session.get("guest_full_access"):
         return True
+    return False
+
+
+def is_file_authorized(filename):
+    """
+    Verify whether the current client is authorized to download or view a specific file.
+    Allows:
+    1. Full session authenticated users.
+    2. Share link token explicitly bound to this specific file (?link=<token> or in session).
+    3. Full-access guest tokens.
+    Rejects:
+    - Unauthenticated users.
+    - Tokens bound to a different file.
+    - Expired or revoked tokens.
+    """
+    if is_session_authenticated():
+        return True
+
+    target_clean = clean_filename(filename)
+    link_token = request.args.get("link", "").strip()
+    if link_token:
+        info = get_share_token_info(link_token)
+        if info:
+            if info.get("scope") == "full":
+                return True
+            if info.get("scope") == "file":
+                token_file = clean_filename(info.get("file", ""))
+                if token_file and token_file == target_clean:
+                    return True
+
+    auth_files = session.get("authorized_files", {})
+    if target_clean in auth_files:
+        token = auth_files[target_clean]
+        info = get_share_token_info(token)
+        if info and not info.get("revoked"):
+            return True
+        else:
+            auth_files.pop(target_clean, None)
+            session["authorized_files"] = auth_files
+
     return False
 
 
@@ -2915,32 +3084,62 @@ def home_page():
         )
         if is_valid_qr:
             session["verified_code"] = state["access_code"]
+            clear_verify_attempts(request.remote_addr or "127.0.0.1")
             return redirect(url_for("home_page"))
 
     link_token = request.args.get("link", "").strip()
-    if link_token and verify_share_link_token(link_token):
-        session["link_verified"] = True
-        dl_file = request.args.get("file", "").strip()
-        if dl_file:
-            return redirect(url_for("download_route", filename=dl_file))
-        return redirect(url_for("home_page"))
+    if link_token:
+        info = get_share_token_info(link_token)
+        if info:
+            if info.get("scope") == "full":
+                session["guest_full_access"] = True
+                return redirect(url_for("home_page"))
+            elif info.get("scope") == "upload_only":
+                session["can_upload_only"] = True
+                return redirect(url_for("home_page"))
+            elif info.get("scope") == "file":
+                bound_file = info.get("file", "")
+                if bound_file:
+                    auth_files = session.get("authorized_files", {})
+                    auth_files[clean_filename(bound_file)] = link_token
+                    session["authorized_files"] = auth_files
+                    return redirect(url_for("view_route", filename=bound_file))
 
     st = resolve_storage()
     return render_template_string(
         MOBILE_PAGE_TEMPLATE,
         storage=st,
-        authed=is_session_authenticated(),
+        authed=is_session_authenticated() or session.get("can_upload_only", False),
     )
 
 
 @app.route("/api/verify-code", methods=["POST"])
 def api_verify_code():
+    client_ip = request.remote_addr or "127.0.0.1"
+    locked, wait_sec = check_ip_lockout(client_ip)
+    if locked:
+        return jsonify({
+            "ok": False,
+            "error": f"Too many failed attempts. Locked out for {wait_sec} seconds. Please wait before trying again."
+        }), 429
+
     body = request.get_json(silent=True) or {}
     submitted = str(body.get("code", "")).replace(" ", "").strip()
     state = check_and_rotate_state()
+
     if submitted and submitted == state["access_code"]:
+        clear_verify_attempts(client_ip)
         session["verified_code"] = state["access_code"]
         return jsonify({"ok": True})
+
+    record_failed_attempt(client_ip)
+    locked, wait_sec = check_ip_lockout(client_ip)
+    if locked:
+        return jsonify({
+            "ok": False,
+            "error": f"Too many failed attempts. Locked out for {wait_sec} seconds."
+        }), 429
+
     return jsonify({
         "ok": False,
         "error": "Invalid Access Code. Please check the 6-digit code on your laptop."
@@ -3039,11 +3238,29 @@ def api_check_update():
 @app.route("/api/apply-update", methods=["POST"])
 def api_apply_update():
     if not is_local_request():
-        return jsonify({"ok": False}), 403
+        return jsonify({"ok": False, "error": "Access denied: local only endpoint."}), 403
+
     body = request.get_json(silent=True) or {}
     download_url = body.get("download_url", "").strip()
     if not download_url:
         return jsonify({"ok": False, "error": "No download URL provided."}), 400
+
+    # Enforce trusted GitHub release repository URL
+    trusted_prefix = f"https://github.com/{GITHUB_REPO}/releases/download/"
+    if not download_url.startswith(trusted_prefix):
+        return jsonify({
+            "ok": False,
+            "error": "Untrusted update source. Update URL must originate from official repository releases."
+        }), 400
+
+    # Enforce trusted executable asset name
+    clean_url_path = download_url.split("?")[0].split("#")[0]
+    asset_name = os.path.basename(clean_url_path).lower()
+    if asset_name not in ("usb_transfer.exe", "usbtransfer.exe"):
+        return jsonify({
+            "ok": False,
+            "error": "Untrusted binary filename in update payload."
+        }), 400
 
     def run_updater_thread():
         try:
@@ -3062,11 +3279,9 @@ def api_apply_update():
                 f.write(f'''@echo off
 timeout /t 2 /nobreak >nul
 taskkill /F /PID {curr_pid} >nul 2>&1
-taskkill /F /IM USB_Transfer.exe >nul 2>&1
-taskkill /F /IM pythonw.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 if exist "{temp_new_exe}" (
-    move /y "{target_exe}" "{target_exe}.old" >nul 2>&1
+    if exist "{target_exe}" move /y "{target_exe}" "{target_exe}.old" >nul 2>&1
     move /y "{temp_new_exe}" "{target_exe}" >nul 2>&1
     start "" "{target_exe}"
 )
@@ -3174,17 +3389,29 @@ def api_generate_link():
     body = request.get_json(silent=True) or {}
     minutes = int(body.get("minutes", 30))
     file_target = str(body.get("file", "")).strip()
-    token, valid_mins = create_share_link_token(minutes_valid=minutes)
+    scope = body.get("scope", "file" if file_target else "full")
+    token, valid_mins = create_share_link_token(minutes_valid=minutes, file_target=file_target, scope=scope)
     target_base = get_active_target_url()
     if file_target:
-        share_url = f"{target_base}/?link={token}&file={file_target}"
+        share_url = f"{target_base}/?link={token}&file={quote(file_target)}"
     else:
         share_url = f"{target_base}/?link={token}"
     return jsonify({
         "ok": True,
+        "token": token,
         "url": share_url,
         "minutes": valid_mins,
+        "scope": scope,
     })
+
+
+@app.route("/api/revoke-link", methods=["POST"])
+@require_auth
+def api_revoke_link():
+    body = request.get_json(silent=True) or {}
+    token = str(body.get("token", "")).strip()
+    ok = revoke_share_link_token(token)
+    return jsonify({"ok": ok})
 
 
 @app.route("/api/select-usb", methods=["POST"])
@@ -3218,6 +3445,12 @@ def api_create_shortcuts():
 @require_auth
 def list_files_route():
     st = resolve_storage()
+    if not st.get("usb_found") or not st.get("upload_dir"):
+        return jsonify({
+            "ok": True,
+            "storage": st,
+            "files": [],
+        })
     return jsonify({
         "ok": True,
         "storage": st,
@@ -3226,8 +3459,15 @@ def list_files_route():
 
 
 @app.route("/upload", methods=["POST"])
-@require_auth
 def upload_route():
+    # Require full session auth OR scoped upload permission
+    if not is_session_authenticated() and not session.get("can_upload_only"):
+        return jsonify({
+            "ok": False,
+            "need_code": True,
+            "error": "Authentication required. Please enter the 6-digit Access Code."
+        }), 401
+
     st = resolve_storage(force_refresh=True)
     if not st.get("usb_found") or not st.get("upload_dir"):
         return jsonify({
@@ -3293,29 +3533,41 @@ def upload_route():
 
 
 @app.route("/download/<path:filename>", methods=["GET"])
-@require_auth
 def download_route(filename):
-    st = resolve_storage()
-    clean = os.path.basename(filename)
-    target = os.path.join(st["upload_dir"], clean)
-    if not os.path.isfile(target) or clean.endswith(".part"):
-        return "<h3 style='color:#dc2626;text-align:center;font-family:sans-serif;'>File not found on USB drive.</h3>", 404
+    if not is_file_authorized(filename):
+        return jsonify({
+            "ok": False,
+            "error": "Authentication required. Please enter the 6-digit Access Code or provide a valid share link."
+        }), 401
+
+    canonical_target, err, status = safe_usb_resolve(filename, must_exist=True)
+    if err:
+        return f"<h3 style='color:#dc2626;text-align:center;font-family:sans-serif;'>{err}</h3>", status
+
+    upload_dir = os.path.dirname(canonical_target)
+    base_name = os.path.basename(canonical_target)
     try:
-        return send_from_directory(st["upload_dir"], clean, as_attachment=True)
+        return send_from_directory(upload_dir, base_name, as_attachment=True)
     except OSError:
         return jsonify({"ok": False, "error": "Could not read file from USB drive."}), 500
 
 
 @app.route("/view/<path:filename>", methods=["GET"])
-@require_auth
 def view_route(filename):
-    st = resolve_storage()
-    clean = os.path.basename(filename)
-    target = os.path.join(st["upload_dir"], clean)
-    if not os.path.isfile(target) or clean.endswith(".part"):
-        return "<h3 style='color:#dc2626;text-align:center;font-family:sans-serif;'>File not found on USB drive.</h3>", 404
+    if not is_file_authorized(filename):
+        return jsonify({
+            "ok": False,
+            "error": "Authentication required. Please enter the 6-digit Access Code or provide a valid share link."
+        }), 401
+
+    canonical_target, err, status = safe_usb_resolve(filename, must_exist=True)
+    if err:
+        return f"<h3 style='color:#dc2626;text-align:center;font-family:sans-serif;'>{err}</h3>", status
+
+    upload_dir = os.path.dirname(canonical_target)
+    base_name = os.path.basename(canonical_target)
     try:
-        return send_from_directory(st["upload_dir"], clean, as_attachment=False)
+        return send_from_directory(upload_dir, base_name, as_attachment=False)
     except OSError:
         return jsonify({"ok": False, "error": "Could not read file from USB drive."}), 500
 
@@ -3323,16 +3575,24 @@ def view_route(filename):
 @app.route("/delete/<path:filename>", methods=["POST"])
 @require_auth
 def delete_route(filename):
-    st = resolve_storage()
-    clean = os.path.basename(filename)
-    target = os.path.join(st["upload_dir"], clean)
-    if not os.path.isfile(target):
-        return jsonify({"ok": False, "error": "File not found."}), 404
+    canonical_target, err, status = safe_usb_resolve(filename, must_exist=True)
+    if err:
+        return jsonify({"ok": False, "error": err}), status
+
     try:
-        os.remove(target)
+        os.remove(canonical_target)
         return jsonify({"ok": True})
     except OSError:
         return jsonify({"ok": False, "error": "Could not delete file from USB drive."}), 500
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 def open_url_instantly(url):
