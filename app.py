@@ -77,7 +77,7 @@ UPLOAD_FOLDER_NAME = "PhoneToUSB"
 DRIVE_REMOVABLE = 2
 
 # Application Version and GitHub Repository for In-App Updates
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 GITHUB_REPO = "SithpongRin/PhoneToUSB"
 
 if getattr(sys, "frozen", False):
@@ -3311,8 +3311,15 @@ def api_apply_update():
             updater_bat = os.path.join(os.path.dirname(target_exe), "_updater_temp.bat")
             with open(updater_bat, "w", encoding="ascii", errors="ignore") as f:
                 f.write(f'''@echo off
+set _PYI_ARCHIVE_FILE=
+set _PYI_PARENT_PROCESS_LEVEL=
+set _PYI_SPLASH_IPC=
+set _PYI_APPLICATION_HOME_DIR=
+set _PYI_LINUX_PROCESS_NAME=
+set _MEIPASS2=
 timeout /t 2 /nobreak >nul
 taskkill /F /PID {curr_pid} >nul 2>&1
+taskkill /F /IM "{os.path.basename(target_exe)}" >nul 2>&1
 timeout /t 1 /nobreak >nul
 if exist "{temp_new_exe}" (
     if exist "{target_exe}" move /y "{target_exe}" "{target_exe}.old" >nul 2>&1
@@ -3322,9 +3329,15 @@ if exist "{temp_new_exe}" (
 timeout /t 2 /nobreak >nul
 del "%~f0"
 ''')
+            clean_env = {
+                k: v for k, v in os.environ.items()
+                if not k.upper().startswith("_PYI_") and not k.upper().startswith("_MEIPASS")
+            }
             subprocess.Popen(
                 ["cmd.exe", "/c", updater_bat],
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                env=clean_env,
+                close_fds=True,
+                creationflags=(subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0,
             )
             os._exit(0)
         except Exception:
