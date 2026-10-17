@@ -77,7 +77,7 @@ UPLOAD_FOLDER_NAME = "PhoneToUSB"
 DRIVE_REMOVABLE = 2
 
 # Application Version and GitHub Repository for In-App Updates
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 GITHUB_REPO = "SithpongRin/PhoneToUSB"
 
 if getattr(sys, "frozen", False):
@@ -262,13 +262,33 @@ def cleanup_old_binary():
         pass
 
 
+def is_removable_drive_path(path_str):
+    if os.name != "nt" or not path_str:
+        return False
+    try:
+        drive = os.path.splitdrive(os.path.abspath(path_str))[0]
+        if drive:
+            dtype = ctypes.windll.kernel32.GetDriveTypeW(ctypes.c_wchar_p(drive + "\\"))
+            return dtype == DRIVE_REMOVABLE
+    except Exception:
+        pass
+    return False
+
+
 def create_desktop_and_start_menu_shortcuts():
     """Create Windows Desktop and Start Menu shortcuts with icon for Taskbar Pinning"""
     if os.name != "nt":
         return False
     try:
         exe_path = sys.executable if getattr(sys, "frozen", False) else os.path.join(BASE_DIR, "USB_Transfer.exe")
-        icon_path = os.path.join(BASE_DIR, "app_icon.ico")
+        if is_removable_drive_path(exe_path):
+            local_fallback = r"D:\PTU\USB_Transfer.exe"
+            if os.path.isfile(local_fallback):
+                exe_path = local_fallback
+            else:
+                return False
+
+        icon_path = os.path.join(os.path.dirname(exe_path), "app_icon.ico")
         if not os.path.isfile(icon_path):
             icon_path = exe_path
 
@@ -562,7 +582,7 @@ class TunnelManager:
 
 tunnel_mgr = TunnelManager()
 atexit.register(tunnel_mgr.stop)
-CONNECTION_MODE = "wifi"  # "wifi", "hotspot", "phone", "internet"
+CONNECTION_MODE = "auto"  # "auto", "wifi", "hotspot", "phone", "internet"
 SELECTED_IP = None
 
 def get_all_laptop_ips():
@@ -571,7 +591,7 @@ def get_all_laptop_ips():
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.255.255.255", 1))
             primary = s.getsockname()[0]
-            if primary and not primary.startswith("127."):
+            if primary and not primary.startswith("127.") and not primary.startswith("169.254."):
                 ips.append(primary)
     except OSError:
         pass
@@ -589,29 +609,38 @@ def get_all_laptop_ips():
 
 def classify_network_modes():
     all_ips = get_all_laptop_ips()
-    wifi_ip = None
-    hotspot_ip = None
-    phone_ip = None
+    real_ips = [ip for ip in all_ips if ip != "127.0.0.1"]
 
-    for ip in all_ips:
+    hotspot_ip = None
+    wifi_ip = None
+
+    for ip in real_ips:
         if ip.startswith("192.168.137."):
             hotspot_ip = ip
-        elif ip.startswith("192.168.43.") or ip.startswith("172.20.10."):
-            phone_ip = ip
         elif not wifi_ip:
             wifi_ip = ip
 
-    if not wifi_ip:
-        wifi_ip = all_ips[0] if all_ips else "127.0.0.1"
-    if not hotspot_ip:
-        hotspot_ip = "192.168.137.1"
-    if not phone_ip:
-        phone_ip = "192.168.43.1"
+    if hotspot_ip:
+        auto_ip = hotspot_ip
+        auto_type = f"Laptop Hotspot ({hotspot_ip})"
+    elif wifi_ip:
+        auto_ip = wifi_ip
+        if wifi_ip.startswith("10.") or wifi_ip.startswith("192.168.43.") or wifi_ip.startswith("172.20.10."):
+            auto_type = f"Phone Hotspot / Wi-Fi ({wifi_ip})"
+        else:
+            auto_type = f"Same Wi-Fi / Hotspot ({wifi_ip})"
+    else:
+        auto_ip = "127.0.0.1"
+        auto_type = "Waiting for Wi-Fi or Hotspot..."
+
+    effective_local = auto_ip
 
     return {
-        "wifi": wifi_ip,
-        "hotspot": hotspot_ip,
-        "phone": phone_ip,
+        "auto": auto_ip,
+        "auto_type": auto_type,
+        "wifi": wifi_ip or effective_local,
+        "hotspot": hotspot_ip or effective_local,
+        "phone": wifi_ip or effective_local,
         "all_ips": all_ips,
     }
 
@@ -629,8 +658,10 @@ def get_active_target_url():
         ip = modes["hotspot"]
     elif mode == "phone":
         ip = modes["phone"]
-    else:
+    elif mode == "wifi":
         ip = modes["wifi"]
+    else:
+        ip = modes["auto"]
     return f"http://{ip}:{ACTIVE_PORT}"
 
 
@@ -2643,24 +2674,16 @@ LAPTOP_QR_TEMPLATE = """<!DOCTYPE html>
                     </div>
                     <div style="margin-top:14px;border-top:1px solid var(--border-color);padding-top:12px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <span style="font-size:0.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Connection Mode</span>
-                            <span id="modeStatusBadge" style="font-size:0.7rem;padding:2px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-weight:600;">Active</span>
+                            <span style="font-size:0.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Smart Auto Connection</span>
+                            <span id="modeStatusBadge" style="font-size:0.7rem;padding:2px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-weight:600;">Auto Active</span>
                         </div>
                         <div class="mode-switch-grid">
-                            <button type="button" class="mode-btn{% if connection_mode == 'wifi' %} active{% endif %}" id="modeBtnWifi" onclick="switchConnectionMode('wifi')">
-                                <span class="mode-btn-title">1. Same Wi-Fi</span>
-                                <span class="mode-btn-sub" id="modeSubWifi">Local Router</span>
-                            </button>
-                            <button type="button" class="mode-btn{% if connection_mode == 'hotspot' %} active{% endif %}" id="modeBtnHotspot" onclick="switchConnectionMode('hotspot')">
-                                <span class="mode-btn-title">2. Laptop Hotspot</span>
-                                <span class="mode-btn-sub" id="modeSubHotspot">Windows Hotspot</span>
-                            </button>
-                            <button type="button" class="mode-btn{% if connection_mode == 'phone' %} active{% endif %}" id="modeBtnPhone" onclick="switchConnectionMode('phone')">
-                                <span class="mode-btn-title">3. Phone Hotspot</span>
-                                <span class="mode-btn-sub" id="modeSubPhone">Phone AP</span>
+                            <button type="button" class="mode-btn{% if connection_mode != 'internet' %} active{% endif %}" id="modeBtnAuto" onclick="switchConnectionMode('auto')">
+                                <span class="mode-btn-title">Auto (Wi-Fi / Hotspot)</span>
+                                <span class="mode-btn-sub" id="modeSubAuto">Smart Auto-Detect</span>
                             </button>
                             <button type="button" class="mode-btn{% if connection_mode == 'internet' %} active{% endif %}" id="modeBtnInternet" onclick="switchConnectionMode('internet')">
-                                <span class="mode-btn-title">4. Internet (4G/5G)</span>
+                                <span class="mode-btn-title">Internet (4G/5G)</span>
                                 <span class="mode-btn-sub" id="modeSubInternet">Public HTTPS</span>
                             </button>
                         </div>
@@ -2856,33 +2879,25 @@ async function refreshState(forceQr, forceCode) {
             }
         }
 
-        const activeMode = d.connection_mode || currentMode || 'wifi';
+        const activeMode = d.connection_mode || currentMode || 'auto';
         currentMode = activeMode;
 
-        const modeBtns = {
-            'wifi': document.getElementById('modeBtnWifi'),
-            'hotspot': document.getElementById('modeBtnHotspot'),
-            'phone': document.getElementById('modeBtnPhone'),
-            'internet': document.getElementById('modeBtnInternet')
-        };
-
-        for (const [key, btn] of Object.entries(modeBtns)) {
-            if (btn) {
-                if (key === activeMode) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            }
+        const btnAuto = document.getElementById('modeBtnAuto');
+        const btnInternet = document.getElementById('modeBtnInternet');
+        if (btnAuto) {
+            if (activeMode !== 'internet') btnAuto.classList.add('active');
+            else btnAuto.classList.remove('active');
+        }
+        if (btnInternet) {
+            if (activeMode === 'internet') btnInternet.classList.add('active');
+            else btnInternet.classList.remove('active');
         }
 
         if (d.network_modes) {
-            const subWifi = document.getElementById('modeSubWifi');
-            const subHotspot = document.getElementById('modeSubHotspot');
-            const subPhone = document.getElementById('modeSubPhone');
-            if (subWifi) subWifi.textContent = d.network_modes.wifi ? d.network_modes.wifi : 'Local Router';
-            if (subHotspot) subHotspot.textContent = d.network_modes.hotspot ? d.network_modes.hotspot : '192.168.137.1';
-            if (subPhone) subPhone.textContent = d.network_modes.phone ? d.network_modes.phone : 'Phone AP';
+            const subAuto = document.getElementById('modeSubAuto');
+            if (subAuto) {
+                subAuto.textContent = d.network_modes.auto_type || d.network_modes.auto || 'Smart Auto-Detect';
+            }
         }
 
         const subInternet = document.getElementById('modeSubInternet');
@@ -2895,7 +2910,7 @@ async function refreshState(forceQr, forceCode) {
             if (badge && !isSwitchingMode) badge.textContent = 'Connecting...';
         } else {
             if (subInternet) subInternet.textContent = 'Public HTTPS';
-            if (badge && !isSwitchingMode) badge.textContent = 'Active';
+            if (badge && !isSwitchingMode) badge.textContent = 'Auto Active';
         }
 
         if (activeMode === 'internet' && (!d.tunnel_info || !d.tunnel_info.active)) {
@@ -3270,8 +3285,27 @@ def api_apply_update():
 
             temp_new_exe = target_exe + ".new"
             req = urllib.request.Request(download_url, headers={"User-Agent": "USB-Transfer-App"})
-            with urllib.request.urlopen(req, timeout=120.0) as resp, open(temp_new_exe, "wb") as out_f:
-                shutil.copyfileobj(resp, out_f)
+            with urllib.request.urlopen(req, timeout=120.0) as resp:
+                expected_len = int(resp.headers.get("Content-Length", "0") or 0)
+                with open(temp_new_exe, "wb") as out_f:
+                    shutil.copyfileobj(resp, out_f)
+                    out_f.flush()
+                    os.fsync(out_f.fileno())
+
+            actual_len = os.path.getsize(temp_new_exe) if os.path.isfile(temp_new_exe) else 0
+            if actual_len < 5 * 1024 * 1024 or (expected_len > 0 and actual_len != expected_len):
+                try:
+                    os.remove(temp_new_exe)
+                except OSError:
+                    pass
+                return
+            with open(temp_new_exe, "rb") as vf:
+                if vf.read(2) != b"MZ":
+                    try:
+                        os.remove(temp_new_exe)
+                    except OSError:
+                        pass
+                    return
 
             curr_pid = os.getpid()
             updater_bat = os.path.join(os.path.dirname(target_exe), "_updater_temp.bat")
@@ -3346,8 +3380,8 @@ def api_set_connection_mode():
         return jsonify({"ok": False}), 403
     global CONNECTION_MODE, _CACHED_QR_KEY, _CACHED_QR_SVG
     body = request.get_json(silent=True) or {}
-    mode = body.get("mode", "wifi").strip().lower()
-    if mode not in ("wifi", "hotspot", "phone", "internet"):
+    mode = body.get("mode", "auto").strip().lower()
+    if mode not in ("auto", "wifi", "hotspot", "phone", "internet"):
         return jsonify({"ok": False, "error": "Invalid connection mode."}), 400
 
     if mode == "internet":
